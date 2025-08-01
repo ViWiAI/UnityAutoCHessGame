@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Tilemaps;
+using System.Text;
 
 public static class GridUtility
 {
@@ -13,6 +14,20 @@ public static class GridUtility
         new Vector3(0.5f, -1.154f, 0f),   // 右下
         new Vector3(-0.5f, -1.154f, 0f)   // 左下
     };
+
+    // 新增：生成随机 playerId
+    public static string GenerateRandomPlayerId(int length = 8)
+    {
+        const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        StringBuilder result = new StringBuilder("Player_", length + 7); // 预分配容量，包含前缀
+
+        for (int i = 0; i < length; i++)
+        {
+            result.Append(chars[Random.Range(0, chars.Length)]);
+        }
+
+        return result.ToString();
+    }
 
     public static List<Vector3Int> GetCellsInRange(Vector3Int targetCell, float aoeRadius, Tilemap tilemap, Tilemap collisionTilemap, bool isAutoChess)
     {
@@ -110,4 +125,6 @@ public static class GridUtility
         Vector3Int cellPos = collisionTilemap.WorldToCell(worldPos);
         return collisionTilemap.HasTile(cellPos);
     }
+
+
 }

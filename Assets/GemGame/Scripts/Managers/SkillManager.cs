@@ -89,9 +89,7 @@ namespace Game.Managers
             // ≤•∑≈Ãÿ–ß
             if (skill.effectPrefab != null)
             {
-                var mapManager = MapManager.GetMapManager(mapId);
-                var tilemap = mapManager.GetTilemap();
-                Vector3 worldPos = tilemap.GetCellCenterWorld(targetCell);
+                Vector3 worldPos = MapManager.Instance.GetTilemap().GetCellCenterWorld(targetCell);
                 GameObject effectObj = Instantiate(skill.effectPrefab, worldPos, Quaternion.identity);
                 effectObj.GetComponent<SkillEffect>().Initialize(worldPos, () =>
                 {
@@ -108,17 +106,15 @@ namespace Game.Managers
 
         private void ApplySkillEffect(Hero caster, Skill skill, Vector3Int targetCell)
         {
-            string mapId = caster.GetCurrentMapId();
-            var mapManager = MapManager.GetMapManager(mapId);
-            Tilemap tilemap = mapManager.GetTilemap();
-            Tilemap collisionTilemap = mapManager.GetCollisionTilemap();
+            Tilemap tilemap = MapManager.Instance.GetTilemap();
+            Tilemap collisionTilemap = MapManager.Instance.GetCollisionTilemap();
             List<Vector3Int> targetCells = skill.isAOE
                 ? GridUtility.GetCellsInRange(targetCell, skill.aoeRadius, tilemap, collisionTilemap, false)
                 : new List<Vector3Int> { targetCell };
 
             foreach (var cell in targetCells)
             {
-                Hero target = FindHeroAtCell(cell, mapId);
+                Hero target = FindHeroAtCell(cell);
                 if (target != null && !target.isDead)
                 {
                     switch (skill.skillType)
@@ -141,15 +137,13 @@ namespace Game.Managers
             NotifyServer(caster, skill, targetCell);
         }
 
-        private Hero FindHeroAtCell(Vector3Int cell, string mapId)
+        private Hero FindHeroAtCell(Vector3Int cell)
         {
-            var mapManager = MapManager.GetMapManager(mapId);
-            Tilemap tilemap = mapManager.GetTilemap();
             foreach (var unit in BattleManager.Instance.teammates.Concat(BattleManager.Instance.enemies))
             {
                 if (unit != null && !unit.isDead)
                 {
-                    Vector3Int unitCell = tilemap.WorldToCell(unit.transform.position);
+                    Vector3Int unitCell = MapManager.Instance.GetTilemap().WorldToCell(unit.transform.position);
                     if (unitCell == cell)
                     {
                         return unit;

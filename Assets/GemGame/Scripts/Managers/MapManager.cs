@@ -13,7 +13,9 @@ namespace Game.Managers
 {
     public class MapManager : MonoBehaviour
     {
-        // 地图类型
+        // 单例实例
+        public static MapManager Instance { get; private set; }
+
         public enum MapType
         {
             WorldMap,    // 世界地图
@@ -22,7 +24,6 @@ namespace Game.Managers
             SiegeMap     // 攻城地图
         }
 
-        // 地图风格环境
         public enum MapStyle
         {
             Desert,      // 沙漠
@@ -42,7 +43,6 @@ namespace Game.Managers
         [SerializeField] private MapStyle mapStyle; // 地图风格
         private string roomId; // 当前房间 ID（用于战斗、PVP等）
         private MapData mapData; // 地图数据
-        private static readonly Dictionary<string, MapManager> activeMapManagers = new Dictionary<string, MapManager>(); // 跟踪所有 MapManager 实例
 
         // 事件：当怪物、宝物等刷新时触发
         public delegate void SpawnHandler(Vector3Int cell, string spawnType, string itemId);
@@ -54,7 +54,17 @@ namespace Game.Managers
 
         private void Awake()
         {
-            // 设置默认 mapId（如果未手动设置）
+            // 单例模式：确保只有一个 MapManager 实例
+            if (Instance != null && Instance != this)
+            {
+                Debug.LogWarning($"MapManager for mapId {mapId} already exists! Destroying this instance.");
+                Destroy(gameObject);
+                return;
+            }
+            Instance = this;
+            DontDestroyOnLoad(gameObject); // 可选：根据需求决定是否跨场景保留
+
+            // 设置默认 mapId
             if (string.IsNullOrEmpty(mapId))
             {
                 mapId = SceneManager.GetActiveScene().name;
@@ -80,15 +90,6 @@ namespace Game.Managers
                 tileContents = new Dictionary<Vector3Int, TileContent>()
             };
 
-            // 注册到 activeMapManagers
-            if (activeMapManagers.ContainsKey(mapId))
-            {
-                Debug.LogWarning($"MapManager for mapId {mapId} already exists! Destroying this instance.");
-                Destroy(gameObject);
-                return;
-            }
-            activeMapManagers.Add(mapId, this);
-
             // 根据地图风格应用环境效果
             ApplyMapStyleEffects();
 
@@ -104,10 +105,10 @@ namespace Game.Managers
                 WebSocketManager.Instance.OnMessageReceived -= HandleServerMessage;
             }
 
-            // 从 activeMapManagers 中移除
-            if (activeMapManagers.ContainsKey(mapId))
+            // 如果当前实例是单例，清除 Instance
+            if (Instance == this)
             {
-                activeMapManagers.Remove(mapId);
+                Instance = null;
             }
         }
 
@@ -145,7 +146,6 @@ namespace Game.Managers
                 case MapStyle.Swamp:
                     foreach (var hero in FindObjectsOfType<PlayerHero>())
                     {
-                        // 假设 Hero.stats 是一个可以修改属性的系统
                         hero.stats.ModifyStat("movespeed", -0.5f);
                     }
                     Debug.Log($"地图 {mapId}: 应用沼泽效果，降低移动速度");
@@ -154,7 +154,6 @@ namespace Game.Managers
                     StartCoroutine(ApplyVolcanoDamage());
                     Debug.Log($"地图 {mapId}: 应用火山效果，周期性伤害");
                     break;
-                    // 其他风格效果
             }
         }
 
@@ -168,11 +167,6 @@ namespace Game.Managers
                 }
                 yield return new WaitForSeconds(1f);
             }
-        }
-
-        public static MapManager GetMapManager(string mapId)
-        {
-            return activeMapManagers.TryGetValue(mapId, out MapManager manager) ? manager : null;
         }
 
         public void SwitchMap(string newMapId, string newRoomId = null)
@@ -202,7 +196,7 @@ namespace Game.Managers
             }
 
             bool isBattleMap = mapType == MapType.DungeonMap || mapType == MapType.PVPMap || mapType == MapType.SiegeMap;
-            //UIManager.Instance.ShowBattleUI(isBattleMap);
+            // UIManager.Instance.ShowBattleUI(isBattleMap);
         }
 
         public Tilemap GetTilemap() => mapData.tilemap;

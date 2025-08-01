@@ -18,6 +18,12 @@ namespace Game.Network
 
         public Action<Dictionary<string, object>> OnMessageReceived;
 
+        // 新增方法：判断 WebSocket 是否已连接
+        public bool IsConnected()
+        {
+            return ws != null && ws.State == WebSocketState.Open;
+        }
+
         private void Awake()
         {
             if (Instance == null)

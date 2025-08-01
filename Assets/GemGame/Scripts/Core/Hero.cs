@@ -5,57 +5,45 @@ using Game.Utility;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.Tilemaps;
 using UnityEngine.UI;
-using static Game.Managers.MapManager;
 
 namespace Game.Core
 {
     public interface IAnimatable
     {
-        void PlayAnimation(string animationName);
+        void PlayAnimation(string animationName, HeroJobs job = HeroJobs.Warrior);
     }
 
-    public class Hero : MonoBehaviour, IAnimatable
+    public abstract class Hero : MonoBehaviour, IAnimatable
     {
-        [SerializeField] protected Tilemap tilemap;
-        [SerializeField] protected Tilemap collisionTilemap;
         [SerializeField] private float spriteHeightOffset = -0.2f;
         [SerializeField] private GameObject heroBarPrefab; // Slider_HealthBar_L1 预制件
-        [SerializeField] private Vector3 healthBarOffset = new Vector3(-0.1f, 1.45f, 0f); // 头顶偏移量
+        [SerializeField] private Vector3 healthBarOffset = new Vector3(-0.1f, 1.45f, 0f);
         [SerializeField] private Canvas uiCanvas; // 在 Inspector 中分配 Canvas
         [SerializeField] private HeroType heroType; // 英雄类型
+        protected Tilemap tilemap; // 主地图
+        protected Tilemap collisionTilemap; // 碰撞地图
 
-        protected Slider healthBarSlider; // 血条 Slider（由 UIManager 设置）
-        protected Slider energeBarSlider; // 魔法条 Slider（由 UIManager 设置）
-        protected GameObject heroBarInstance; // 血条实例（由 UIManager 设置）
-
+        protected Slider healthBarSlider; // 血条 Slider
+        protected Slider energeBarSlider; // 魔法条 Slider
+        protected GameObject heroBarInstance; // 血条实例
         protected string currentMapId;
-        public AttackMode currentAttackMode;
-        public List<Equipment> equipment = new List<Equipment>();
+        protected AttackMode currentAttackMode;
+        protected List<Equipment> equipment = new List<Equipment>();
         public Stats stats;
         public string heroName;
         public bool isDead;
-        public bool isMoving;
-        public bool isAttacking;
+        protected bool isMoving;
+        protected bool isAttacking;
         protected bool isHurtAnimationPlaying;
-        public bool isAutoAttacking;
+        protected bool isAutoAttacking;
         protected Vector3 targetPosition;
         protected List<Vector3Int> path = new List<Vector3Int>();
         protected int pathIndex;
         protected GameObject lastTargetEnemy;
         protected Vector3Int lastTargetCell;
-
-        protected List<Equipment> equipmentList = new List<Equipment>();
-        private int maxEquipment = 6;
-
-        public enum HeroType
-        {
-            PlayerHero,    // 玩家
-            PlayerPet,  // 玩家宠物
-            Monster,      // 怪物
-        }
-
         protected readonly Vector3[] hexDirections = new Vector3[]
         {
             new Vector3(1f, 0f, 0f),
@@ -66,21 +54,14 @@ namespace Game.Core
             new Vector3(-0.5f, -1.154f, 0f)
         };
 
-        protected class Node
-        {
-            public Vector3Int cellPos;
-            public float gCost;
-            public float hCost;
-            public float fCost => gCost + hCost;
-            public Node parent;
+        private readonly int maxEquipment = 6;
+        private static readonly Dictionary<string, List<Vector3Int>> pathCache = new Dictionary<string, List<Vector3Int>>(); // 路径缓存
 
-            public Node(Vector3Int cellPos, float gCost, float hCost, Node parent)
-            {
-                this.cellPos = cellPos;
-                this.gCost = gCost;
-                this.hCost = hCost;
-                this.parent = parent;
-            }
+        public enum HeroType
+        {
+            PlayerHero,    // 玩家
+            PlayerPet,     // 玩家宠物
+            Monster        // 怪物
         }
 
         [System.Serializable]
@@ -100,7 +81,10 @@ namespace Game.Core
             public float dodgeRate = 0.05f;
             public float moveSpeed = 2f;
 
-            public Stats(float health = 100f, float maxHealth = 100f, float mana = 0f, float maxMana = 100f, float attackDamage = 10f, float armor = 5f, float attackSpeed = 1f, float spellPower = 10f, float magicResist = 5f, float manaRegen = 2f, float critRate = 0.1f, float dodgeRate = 0.05f, float moveSpeed = 2f)
+            public Stats(float health = 100f, float maxHealth = 100f, float mana = 0f, float maxMana = 100f,
+                         float attackDamage = 10f, float armor = 5f, float attackSpeed = 1f,
+                         float spellPower = 10f, float magicResist = 5f, float manaRegen = 2f,
+                         float critRate = 0.1f, float dodgeRate = 0.05f, float moveSpeed = 2f)
             {
                 this.health = health;
                 this.maxHealth = maxHealth;
@@ -134,104 +118,144 @@ namespace Game.Core
                     case "critrate": critRate += value; break;
                     case "dodgerate": dodgeRate += value; break;
                     case "movespeed": moveSpeed += value; break;
+                    default: Debug.LogWarning($"未知属性: {statName}"); break;
                 }
+            }
+        }
+
+        protected class Node
+        {
+            public Vector3Int cellPos;
+            public float gCost;
+            public float hCost;
+            public float fCost => gCost + hCost;
+            public Node parent;
+
+            public Node(Vector3Int cellPos, float gCost, float hCost, Node parent)
+            {
+                this.cellPos = cellPos;
+                this.gCost = gCost;
+                this.hCost = hCost;
+                this.parent = parent;
             }
         }
 
         protected virtual void Awake()
         {
             stats = new Stats();
+            heroName = gameObject.name;
             currentAttackMode = gameObject.AddComponent<MeleePhysicalAttack>();
             currentAttackMode.SetHero(this);
-            currentAttackMode.SetTilemaps(tilemap, collisionTilemap);
+
+            // 动态获取 Canvas
+            uiCanvas = FindObjectOfType<Canvas>();
+            if (uiCanvas == null)
+            {
+                Debug.LogWarning($"未找到 Canvas 组件，将禁用血条和魔法条: {heroName}");
+            }
+
+            // 初始化 Tilemap
+            if (MapManager.Instance != null)
+            {
+                tilemap = MapManager.Instance.GetTilemap();
+                collisionTilemap = MapManager.Instance.GetCollisionTilemap();
+                currentAttackMode?.SetTilemaps(tilemap, collisionTilemap);
+                if (string.IsNullOrEmpty(currentMapId))
+                {
+                    currentMapId = MapManager.Instance.GetMapId();
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"MapManager 单例未初始化，英雄: {heroName}");
+            }
         }
 
         protected virtual void Start()
         {
-            Debug.Log($"Hero name:{gameObject.name}");
-            if (uiCanvas == null)
-            {
-                Debug.LogError($"未在 {gameObject.name} 的 Inspector 中分配 Canvas！");
-                return;
-            }
             if (heroBarPrefab == null)
             {
-                Debug.LogError($"未分配 heroBarPrefab！请在 {gameObject.name} 的 Inspector 中设置 Slider_HealthBar_L1 预制件。");
-                return;
+                Debug.LogWarning($"未分配 heroBarPrefab，请在 {heroName} 的 Inspector 中设置 Slider_HealthBar_L1 预制件");
             }
-            // 实例化血条
-            heroBarInstance = Instantiate(heroBarPrefab, uiCanvas.transform);
-            InitializeHealthBar();
-            InitializeEnergeBar();
+            else
+            {
+                InitializeUI();
+            }
             StartCoroutine(ManaRegeneration());
         }
 
-        protected virtual void Update()
+        protected virtual void FixedUpdate()
         {
-            if (isDead) return;
-
-            // 更新血条位置（头顶）
-            if (heroBarInstance != null)
+            if (isMoving && !isDead)
             {
-                Vector3 worldPos = transform.position + healthBarOffset;
-                Vector3 screenPos = Camera.main.WorldToScreenPoint(worldPos);
-                heroBarInstance.transform.position = new Vector3(screenPos.x, screenPos.y, 0f);
-                UpdateHealthBar();
-                UpdateEnergeBar();
-            }
-
-            if (isMoving)
-            {
-                Vector3 smoothedPosition = Vector3.MoveTowards(
-                    transform.position,
-                    targetPosition,
-                    stats.moveSpeed * Time.deltaTime
-                );
-                transform.position = smoothedPosition;
-
+                transform.position = Vector3.MoveTowards(transform.position, targetPosition, stats.moveSpeed * Time.fixedDeltaTime);
                 if (Vector3.Distance(transform.position, targetPosition) < 0.01f)
                 {
                     transform.position = targetPosition;
                     if (path != null && pathIndex < path.Count)
                     {
-                        targetPosition = ApplyPositionOffset(tilemap.GetCellCenterWorld(path[pathIndex]));
-                        UpdateOrientation();
-                        pathIndex++;
+                        if (MapManager.Instance != null && MapManager.Instance.GetTilemap() != null)
+                        {
+                            targetPosition = ApplyPositionOffset(MapManager.Instance.GetTilemap().GetCellCenterWorld(path[pathIndex]));
+                            pathIndex++;
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"MapManager 或 Tilemap 未初始化，停止移动: {heroName}");
+                            isMoving = false;
+                            path.Clear();
+                            pathIndex = 0;
+                        }
                     }
                     else
                     {
                         isMoving = false;
                         path.Clear();
                         pathIndex = 0;
-                        if (!isHurtAnimationPlaying) PlayAnimation("Idle");
+                        if (!isHurtAnimationPlaying)
+                        {
+                            PlayAnimation("Idle");
+                        }
                     }
                 }
+                UpdateOrientation();
             }
         }
 
-        protected virtual void FixedUpdate()
+        protected virtual void Update()
         {
+            if (isDead) return;
+            if (heroBarInstance != null)
+            {
+                Vector3 worldPos = transform.position + healthBarOffset;
+                Vector3 screenPos = Camera.main != null ? Camera.main.WorldToScreenPoint(worldPos) : worldPos;
+                heroBarInstance.transform.position = new Vector3(screenPos.x, screenPos.y, 0f);
+                UpdateHealthBar();
+                UpdateEnergeBar();
+            }
+        }
 
+        protected void InitializeUI()
+        {
+            heroBarInstance = Instantiate(heroBarPrefab, uiCanvas.transform);
+            heroBarInstance.name = $"HeroBar_{heroName}";
+            InitializeHealthBar();
+            InitializeEnergeBar();
         }
 
         protected void InitializeHealthBar()
         {
-            if (heroBarInstance == null)
-            {
-                Debug.LogError("heroBarInstance 未初始化！");
-                return;
-            }
-
+            if (heroBarInstance == null) return;
             Transform hpTransform = heroBarInstance.transform.Find("Slider_HP");
             if (hpTransform == null)
             {
-                Debug.LogError($"未找到 Slider_HP！请检查 {heroBarPrefab.name} 预制件的层级结构。");
+                Debug.LogError($"未找到 Slider_HP 在 {heroBarInstance.name}");
                 return;
             }
             healthBarSlider = hpTransform.GetComponent<Slider>();
             if (healthBarSlider == null)
             {
-                Debug.LogError("Slider_HP 上缺少 Slider 组件！");
+                Debug.LogError($"Slider_HP 缺少 Slider 组件");
                 return;
             }
             healthBarSlider.minValue = 0f;
@@ -241,22 +265,17 @@ namespace Game.Core
 
         protected void InitializeEnergeBar()
         {
-            if (heroBarInstance == null)
-            {
-                Debug.LogError("heroBarInstance 未初始化！");
-                return;
-            }
-
+            if (heroBarInstance == null) return;
             Transform mpTransform = heroBarInstance.transform.Find("Slider_MP");
             if (mpTransform == null)
             {
-                Debug.LogError($"未找到 Slider_MP！请检查 {heroBarPrefab.name} 预制件的层级结构。");
+                Debug.LogError($"未找到 Slider_MP 在 {heroBarInstance.name}");
                 return;
             }
             energeBarSlider = mpTransform.GetComponent<Slider>();
             if (energeBarSlider == null)
             {
-                Debug.LogError("Slider_MP 上缺少 Slider 组件！");
+                Debug.LogError($"Slider_MP 缺少 Slider 组件");
                 return;
             }
             energeBarSlider.minValue = 0f;
@@ -272,7 +291,7 @@ namespace Game.Core
             }
             if (heroBarInstance != null)
             {
-                heroBarInstance.SetActive(!isDead); // 死亡时隐藏血条
+                heroBarInstance.SetActive(!isDead);
             }
         }
 
@@ -304,9 +323,10 @@ namespace Game.Core
 
         public virtual void TakeDamage(float damage, bool isMagic = false)
         {
+            if (isDead) return;
             if (Random.value < stats.dodgeRate)
             {
-                Debug.Log($"{heroName} 闪避了攻击！");
+                Debug.Log($"{heroName} 闪避了攻击");
                 return;
             }
 
@@ -316,10 +336,10 @@ namespace Game.Core
             if (Random.value < stats.critRate)
             {
                 finalDamage *= 1.5f;
-                Debug.Log($"{heroName} 受到暴击！");
+                Debug.Log($"{heroName} 受到暴击");
             }
             stats.ModifyStat("health", -finalDamage);
-            Debug.Log($"{heroName} 受到 {finalDamage} {(isMagic ? "魔法" : "物理")}伤害，剩余血量: {stats.health}");
+            Debug.Log($"{heroName} 受到 {finalDamage:F2} {(isMagic ? "魔法" : "物理")}伤害，剩余血量: {stats.health:F2}");
 
             UpdateHealthBar();
 
@@ -331,10 +351,10 @@ namespace Game.Core
                 PlayAnimation("Death");
                 Collider2D collider = GetComponent<Collider2D>();
                 if (collider != null) collider.enabled = false;
-                UpdateHealthBar(); // 隐藏血条
-                if (this is PlayerHero)
+                UpdateHealthBar();
+                if (heroType == HeroType.PlayerHero)
                 {
-                //    UIManager.Instance.ShowDeathDialog((this as PlayerHero).OnRespawn);
+                    // UIManager.Instance.ShowDeathDialog(OnRespawn);
                 }
             }
             else if (finalDamage > 0)
@@ -367,52 +387,51 @@ namespace Game.Core
             currentAttackMode?.SetTilemaps(tilemap, collisionTilemap);
         }
 
-        protected virtual Tilemap GetCurrentTilemap()
-        {
-            var mapManager = MapManager.GetMapManager(currentMapId);
-            Tilemap tilemap = mapManager.GetTilemap();
-            return tilemap;
-        }
-
-        public string GetCurrentMapId()
-        {
-            return currentMapId;
-        }
+        public string GetCurrentMapId() => currentMapId;
 
         public void SetCurrentMapId(string mapId)
         {
             currentMapId = mapId;
-            var mapManager = MapManager.GetMapManager(mapId);
-            tilemap = mapManager.GetTilemap();
-            collisionTilemap = mapManager.GetCollisionTilemap();
-            if (currentAttackMode != null)
+            if (MapManager.Instance != null && MapManager.Instance.GetMapId() == mapId)
             {
-                currentAttackMode.SetTilemaps(tilemap, collisionTilemap);
-            }
-        }
-
-        public virtual void PlayAnimation(string animationName)
-        {
-            ChangeAnimation(animationName);
-        }
-
-        protected virtual void ChangeAnimation(string animationName)
-        {
-            if (heroType == HeroType.PlayerHero && GetComponent<CharacterAnimator>() != null)
-            {
-                GetComponent<CharacterAnimator>().ChangeAnimation(animationName);
-            }
-            else if (heroType == HeroType.Monster && GetComponent<MonsterAnimator>() != null)
-            {
-                GetComponent<MonsterAnimator>().ChangeAnimation(animationName);
-            }
-            else if (heroType == HeroType.PlayerPet && GetComponent<PetAnimator>() != null)
-            {
-                GetComponent<PetAnimator>().ChangeAnimation(animationName);
+                tilemap = MapManager.Instance.GetTilemap();
+                collisionTilemap = MapManager.Instance.GetCollisionTilemap();
+                currentAttackMode?.SetTilemaps(tilemap, collisionTilemap);
             }
             else
             {
-                Debug.LogWarning($"在 {gameObject.name} 上未找到与 HeroType {heroType} 对应的有效动画组件");
+                Debug.LogWarning($"MapManager 单例未初始化或 mapId 不匹配: {mapId}, 当前 MapManager mapId: {MapManager.Instance?.GetMapId()}");
+            }
+        }
+
+        public virtual void PlayAnimation(string animationName, HeroJobs job = HeroJobs.Warrior)
+        {
+            switch (heroType)
+            {
+                case HeroType.PlayerHero:
+                    var playerAnimator = GetComponent<PlayerAnimator>();
+                    if (playerAnimator != null)
+                        playerAnimator.ChangeAnimation(animationName, job);
+                    else
+                        Debug.LogWarning($"未找到 PlayerAnimator 组件: {heroName}");
+                    break;
+                case HeroType.PlayerPet:
+                    var petAnimator = GetComponent<PetAnimator>();
+                    if (petAnimator != null)
+                        petAnimator.ChangeAnimation(animationName);
+                    else
+                        Debug.LogWarning($"未找到 PetAnimator 组件: {heroName}");
+                    break;
+                case HeroType.Monster:
+                    var monsterAnimator = GetComponent<MonsterAnimator>();
+                    if (monsterAnimator != null)
+                        monsterAnimator.ChangeAnimation(animationName);
+                    else
+                        Debug.LogWarning($"未找到 MonsterAnimator 组件: {heroName}");
+                    break;
+                default:
+                    Debug.LogWarning($"未知 HeroType: {heroType}");
+                    break;
             }
         }
 
@@ -434,17 +453,23 @@ namespace Game.Core
             lastTargetEnemy = target;
             lastTargetCell = targetCell;
 
-            Hero targetHero = target.GetComponent<Hero>();
+            Hero targetHero = target?.GetComponent<Hero>();
             if (targetHero == null || targetHero.isDead)
             {
                 StopAttack();
                 return;
             }
 
-            Vector3Int attackerCell = tilemap.WorldToCell(transform.position);
+            if (MapManager.Instance == null || MapManager.Instance.GetTilemap() == null)
+            {
+                Debug.LogWarning($"MapManager 或 Tilemap 未初始化，取消攻击: {heroName}");
+                return;
+            }
+
+            Vector3Int attackerCell = MapManager.Instance.GetTilemap().WorldToCell(transform.position);
             if (currentAttackMode.IsWithinAttackDistance(attackerCell, targetCell))
             {
-                if (stats.mana >= stats.maxMana && !(this is PlayerHero))
+                if (stats.mana >= stats.maxMana && heroType != HeroType.PlayerHero)
                 {
                     currentAttackMode.PerformSkill(targetCell);
                 }
@@ -459,23 +484,20 @@ namespace Game.Core
             }
         }
 
-        protected virtual IEnumerator PlayHurtAnimation()
-        {
-            isHurtAnimationPlaying = true;
-            PlayAnimation("Hurt");
-            yield return new WaitForSeconds(0.5f);
-            isHurtAnimationPlaying = false;
-            if (!isDead && !isAttacking) PlayAnimation("Idle");
-        }
-
         public void MoveToAttackRange(Vector3Int targetCell, bool isAuto)
         {
+            if (MapManager.Instance == null || MapManager.Instance.GetTilemap() == null || MapManager.Instance.GetCollisionTilemap() == null)
+            {
+                Debug.LogWarning($"MapManager 或 Tilemap 未初始化，取消移动: {heroName}");
+                return;
+            }
+
             List<Vector3Int> path = Pathfinding.FindPathToAttackRange(
-                tilemap.WorldToCell(transform.position),
+                MapManager.Instance.GetTilemap().WorldToCell(transform.position),
                 targetCell,
                 currentAttackMode.GetAttackDistance(),
-                tilemap,
-                collisionTilemap
+                MapManager.Instance.GetTilemap(),
+                MapManager.Instance.GetCollisionTilemap()
             );
             if (path != null && path.Count > 0)
             {
@@ -483,7 +505,7 @@ namespace Game.Core
                 pathIndex = 0;
                 isMoving = true;
                 isAutoAttacking = isAuto;
-                targetPosition = ApplyPositionOffset(tilemap.GetCellCenterWorld(path[pathIndex]));
+                targetPosition = ApplyPositionOffset(MapManager.Instance.GetTilemap().GetCellCenterWorld(path[pathIndex]));
                 UpdateOrientation();
                 PlayAnimation("Walk");
             }
@@ -491,53 +513,74 @@ namespace Game.Core
 
         public virtual void MoveTo(Vector3Int cellPos)
         {
-            if (tilemap == null || collisionTilemap == null)
+            if (MapManager.Instance == null || MapManager.Instance.GetTilemap() == null || MapManager.Instance.GetCollisionTilemap() == null)
             {
-                Debug.LogError("Tilemap 或 collisionTilemap 未设置");
+                Debug.LogError($"MapManager 或 Tilemap 未设置: {heroName}");
                 return;
             }
 
-            if (tilemap.HasTile(cellPos) && !GridUtility.HasObstacle(cellPos, tilemap, collisionTilemap))
+            if (MapManager.Instance.GetTilemap().HasTile(cellPos) && !GridUtility.HasObstacle(cellPos, MapManager.Instance.GetTilemap(), MapManager.Instance.GetCollisionTilemap()))
             {
-                List<Vector3Int> path = Pathfinding.FindPathToAttackRange(
-                    tilemap.WorldToCell(transform.position),
-                    cellPos,
-                    0f,
-                    tilemap,
-                    collisionTilemap
-                );
+                string cacheKey = $"{MapManager.Instance.GetTilemap().WorldToCell(transform.position)}_{cellPos}";
+                if (!pathCache.TryGetValue(cacheKey, out path))
+                {
+                    path = FindPath(MapManager.Instance.GetTilemap().WorldToCell(transform.position), cellPos);
+                    if (path != null && path.Count > 0)
+                    {
+                        pathCache[cacheKey] = path; // 缓存路径
+                    }
+                }
+
                 if (path != null && path.Count > 0)
                 {
-                    this.path = path;
                     pathIndex = 0;
                     isMoving = true;
-                    targetPosition = ApplyPositionOffset(tilemap.GetCellCenterWorld(path[pathIndex]));
+                    targetPosition = ApplyPositionOffset(MapManager.Instance.GetTilemap().GetCellCenterWorld(path[pathIndex]));
                     UpdateOrientation();
                     PlayAnimation("Walk");
-                    Debug.Log($"移动到 {cellPos}，路径节点数: {path.Count}");
+                  //  Debug.Log($"移动到 {cellPos}，路径节点数: {path.Count}, 英雄: {heroName}");
                 }
                 else
                 {
-                    Debug.Log($"未找到到 {cellPos} 的有效路径");
-                //    UIManager.Instance.ShowMessage("无法到达目标位置！");
+                    Debug.LogWarning($"未找到到 {cellPos} 的有效路径: {heroName}");
                 }
             }
             else
             {
-                Debug.Log($"目标格子 {cellPos} 无效或有障碍物");
-             //   UIManager.Instance.ShowMessage("无法移动到此位置！");
+                Debug.LogWarning($"目标格子 {cellPos} 无效或有障碍物: {heroName}");
             }
         }
 
         public virtual void UpdateOrientation()
         {
-            Vector3 direction = targetPosition - transform.position;
-            Debug.Log($"UpdateOrientation {direction} ");
-            if (heroType == HeroType.PlayerHero && GetComponent<PlayerAnimator>() != null)
+            if (!isMoving || path == null || pathIndex >= path.Count)
             {
-                Debug.Log($"UpdateOrientation PlayerHero ");
-                PlayerAnimator animator = GetComponent<PlayerAnimator>();
-                animator.SetOrientation(direction);
+                return;
+            }
+
+            if (MapManager.Instance == null || MapManager.Instance.GetTilemap() == null)
+            {
+                Debug.LogWarning($"MapManager 或 Tilemap 未初始化: {heroName}");
+                return;
+            }
+
+            Vector3 targetWorldPos = MapManager.Instance.GetTilemap().GetCellCenterWorld(path[pathIndex]);
+            Vector3 direction = targetWorldPos - transform.position;
+            if (heroType == HeroType.PlayerHero || heroType == HeroType.PlayerPet)
+            {
+                var animator = GetComponent<PlayerAnimator>();
+                if (animator != null)
+                {
+                    animator.SetOrientation(direction);
+                }
+            }
+            else if (heroType == HeroType.Monster)
+            {
+                var animator = GetComponent<MonsterAnimator>();
+                if (animator != null)
+                {
+                    animator.SetOrientation(direction);
+                }
             }
         }
 
@@ -548,21 +591,138 @@ namespace Game.Core
             lastTargetEnemy = null;
             lastTargetCell = Vector3Int.zero;
             StopAllCoroutines();
-            if (!isDead && !isHurtAnimationPlaying) PlayAnimation("Idle");
+            if (!isDead && !isHurtAnimationPlaying)
+            {
+                PlayAnimation("Idle");
+            }
         }
 
         public void Equip(Equipment equipment)
         {
-            if (equipmentList.Count < maxEquipment)
+            //if (equipment.Count < maxEquipment)
+            //{
+            //    this.equipment.Add(equipment);
+            //    foreach (var bonus in equipment.statBonuses)
+            //    {
+            //        stats.ModifyStat(bonus.Key, bonus.Value);
+            //    }
+            //    // GearsManager.Instance.ApplySkinChanges();
+            //}
+        }
+
+        protected virtual IEnumerator PlayHurtAnimation()
+        {
+            isHurtAnimationPlaying = true;
+            PlayAnimation("Hurt");
+            yield return new WaitForSeconds(0.5f);
+            isHurtAnimationPlaying = false;
+            if (!isDead && !isAttacking)
             {
-                equipmentList.Add(equipment);
-                foreach (var bonus in equipment.statBonuses)
-                {
-                    stats.ModifyStat(bonus.Key, bonus.Value);
-                }
-              //  GearsManager.Instance.ApplySkinChanges();
+                PlayAnimation("Idle");
             }
         }
 
+        protected List<Vector3Int> FindPath(Vector3Int start, Vector3Int goal)
+        {
+            if (MapManager.Instance == null || MapManager.Instance.GetTilemap() == null || MapManager.Instance.GetCollisionTilemap() == null)
+            {
+                Debug.LogWarning($"MapManager 或 Tilemap 未初始化，取消寻路: {heroName}");
+                return null;
+            }
+
+            if (start == goal)
+            {
+                Debug.Log($"目标格子与当前位置相同，无需移动: {heroName}");
+                return new List<Vector3Int>();
+            }
+
+            List<Node> openList = new List<Node>();
+            HashSet<Vector3Int> closedList = new HashSet<Vector3Int>();
+            Node startNode = new Node(start, 0, Heuristic(start, goal), null);
+            openList.Add(startNode);
+            int maxIterations = 1000;
+
+            while (openList.Count > 0 && maxIterations-- > 0)
+            {
+                Node current = openList[0];
+                int currentIndex = 0;
+                for (int i = 1; i < openList.Count; i++)
+                {
+                    if (openList[i].fCost < current.fCost || (openList[i].fCost == current.fCost && openList[i].hCost < current.hCost))
+                    {
+                        current = openList[i];
+                        currentIndex = i;
+                    }
+                }
+
+                openList.RemoveAt(currentIndex);
+                closedList.Add(current.cellPos);
+
+                if (current.cellPos == goal)
+                {
+                    List<Vector3Int> path = new List<Vector3Int>();
+                    Node node = current;
+                    while (node != null)
+                    {
+                        path.Add(node.cellPos);
+                        node = node.parent;
+                    }
+                    path.Reverse();
+                    return path.Count > 1 ? path.GetRange(1, path.Count - 1) : path;
+                }
+
+                foreach (Vector3 dir in hexDirections)
+                {
+                    Vector3Int neighborPos = MapManager.Instance.GetTilemap().WorldToCell(MapManager.Instance.GetTilemap().GetCellCenterWorld(current.cellPos) + dir);
+                    if (closedList.Contains(neighborPos) || !MapManager.Instance.GetTilemap().HasTile(neighborPos) || GridUtility.HasObstacle(neighborPos, MapManager.Instance.GetTilemap(), MapManager.Instance.GetCollisionTilemap()))
+                    {
+                        continue;
+                    }
+
+                    float newGCost = current.gCost + 1;
+                    Node neighbor = new Node(neighborPos, newGCost, Heuristic(neighborPos, goal), current);
+                    bool inOpenList = false;
+
+                    for (int i = 0; i < openList.Count; i++)
+                    {
+                        if (openList[i].cellPos == neighborPos && openList[i].gCost <= newGCost)
+                        {
+                            inOpenList = true;
+                            break;
+                        }
+                        else if (openList[i].cellPos == neighborPos)
+                        {
+                            openList[i] = neighbor; // 更新更优路径
+                            inOpenList = true;
+                        }
+                    }
+
+                    if (!inOpenList)
+                    {
+                        openList.Add(neighbor);
+                    }
+                }
+            }
+
+            Debug.LogWarning($"未找到路径，超出最大迭代次数或无有效路径: {heroName}");
+            return null;
+        }
+
+        private float Heuristic(Vector3Int a, Vector3Int b)
+        {
+            if (MapManager.Instance == null || MapManager.Instance.GetTilemap() == null)
+            {
+                Debug.LogWarning($"MapManager 或 Tilemap 未初始化，取消启发式计算: {heroName}");
+                return 0f;
+            }
+            Vector3 worldA = MapManager.Instance.GetTilemap().GetCellCenterWorld(a);
+            Vector3 worldB = MapManager.Instance.GetTilemap().GetCellCenterWorld(b);
+            return Vector3.Distance(worldA, worldB) / 0.866f;
+        }
+
+        protected virtual void OnDestroy()
+        {
+            // 清理逻辑
+        }
     }
 }

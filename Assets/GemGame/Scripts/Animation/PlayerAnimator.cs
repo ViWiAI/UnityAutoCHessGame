@@ -36,7 +36,7 @@ namespace Game.Animation
             playerHero = GetComponent<PlayerHero>();
             if (playerHero == null)
             {
-                Debug.LogError($"{name} 需要 GearEquipper 和 PlayerHero 组件！");
+                Debug.LogError($"{name} 需要 PlayerHero 组件！");
             }
 
             // 初始化动画字典
@@ -194,7 +194,7 @@ namespace Game.Animation
             if (characterSkeleton != null)
             {
                 characterSkeleton.skeleton.ScaleX = skeletonScaleX;
-                Debug.Log($"设置朝向: direction={direction}, skeletonScaleX={skeletonScaleX}");
+              //  Debug.Log($"设置朝向: direction={direction}, skeletonScaleX={skeletonScaleX}");
             }
             else
             {

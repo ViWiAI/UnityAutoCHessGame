@@ -60,18 +60,16 @@ namespace Game.Combat
 
         private void InitializePositions(string mapId)
         {
-            var mapManager = MapManager.GetMapManager(mapId);
-            var tilemap = mapManager.GetTilemap();
             int index = 0;
             foreach (var teammate in teammates)
             {
-                teammate.transform.position = tilemap.GetCellCenterWorld(new Vector3Int(index, 0, 0));
+                teammate.transform.position = MapManager.Instance.GetTilemap().GetCellCenterWorld(new Vector3Int(index, 0, 0));
                 index++;
             }
             index = 0;
             foreach (var enemy in enemies)
             {
-                enemy.transform.position = tilemap.GetCellCenterWorld(new Vector3Int(index + 5, 0, 0));
+                enemy.transform.position = MapManager.Instance.GetTilemap().GetCellCenterWorld(new Vector3Int(index + 5, 0, 0));
                 index++;
             }
         }
@@ -82,7 +80,7 @@ namespace Game.Combat
             {
                 { "type", "battle_end" },
                 { "battle_room_id", currentRoomId },
-                { "player_id", PlayerHero.Instance.GetPlayerId() }
+              //  { "player_id", PlayerHero.GetPlayerId() }
             });
             UIManager.Instance.ShowBattleUI(false);
             currentRoomId = null;
