@@ -57,12 +57,12 @@ namespace Game.Combat
 
             InitializePositions(battleMapId);
             //UIManager.Instance.ShowBattleUI(true);
-            WebSocketManager.Instance.Send(new Dictionary<string, object>
-            {
-                { "type", "battle_ready" },
-                { "battle_room_id", battleRoomId },
-                { "player_id", player.GetPlayerId() }
-            });
+            //WebSocketManager.Instance.Send(new Dictionary<string, object>
+            //{
+            //    { "type", "battle_ready" },
+            //    { "battle_room_id", battleRoomId },
+            //    { "player_id", player.GetPlayerId() }
+            //});
             Debug.Log($"PVE 战斗开始: 房间 {battleRoomId}, 地图 {battleMapId}, 队友数: {teammates.Count}, 敌人数: {enemies.Count}");
         }
 
@@ -90,12 +90,12 @@ namespace Game.Combat
 
         public void EndBattle()
         {
-            WebSocketManager.Instance.Send(new Dictionary<string, object>
-            {
-                { "type", "battle_end" },
-                { "battle_room_id", currentRoomId },
-                { "player_id", teammates.Count > 0 ? (teammates[0] as PlayerHero)?.GetPlayerId() : "" }
-            });
+            //WebSocketManager.Instance.Send(new Dictionary<string, object>
+            //{
+            //    { "type", "battle_end" },
+            //    { "battle_room_id", currentRoomId },
+            //    { "player_id", teammates.Count > 0 ? (teammates[0] as PlayerHero)?.GetPlayerId() : "" }
+            //});
             //UIManager.Instance.ShowBattleUI(false);
             currentRoomId = null;
             lastAttackers.Clear(); // 清理攻击者记录

@@ -5,6 +5,7 @@ using Game.Network;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Game.Data;
 
 namespace Game.Managers
 {
@@ -16,6 +17,7 @@ namespace Game.Managers
         private PlayerHero playerHero;
         private string currentMapId;
         private bool isLogin;
+        private float spriteHeightOffset = -0.2f;
 
         public bool GetLoginStatus()
         {
@@ -46,10 +48,10 @@ namespace Game.Managers
             {
                 currentMapId = SceneManager.GetActiveScene().name;
             }
-            InitializeLocalPlayer(GridUtility.GenerateRandomPlayerId(), HeroJobs.Warrior, new Vector3Int(-1, 0, 0));
+            InitializeLocalPlayer(GridUtility.GenerateRandomPlayerId(), HeroRole.Warrior, new Vector3Int(0, 0, 0));
         }
 
-        private void InitializeLocalPlayer(string playerId, HeroJobs job, Vector3Int initialCellPos)
+        private void InitializeLocalPlayer(string playerId, HeroRole job, Vector3Int initialCellPos)
         {
             if (playerHero != null)
             {
@@ -85,6 +87,7 @@ namespace Game.Managers
 
             //Vector3Int initialCellPos = new Vector3Int(-1,0, 0);
             Vector3 worldPos = MapManager.Instance.GetTilemap().GetCellCenterWorld(initialCellPos);
+            worldPos += new Vector3(0, spriteHeightOffset, 0);
             GameObject playerObj = Instantiate(playerPrefab, worldPos, Quaternion.identity);
             playerObj.name = $"{playerId}";
             playerHero = playerObj.GetComponent<PlayerHero>();
@@ -106,21 +109,8 @@ namespace Game.Managers
             // 通知服务器玩家上线
             if (WebSocketManager.Instance.IsConnected())
             {
-                WebSocketManager.Instance.Send(new Dictionary<string, object>
-                {
-                    { "type", "player_online" },
-                    { "player_id", playerId },
-                    { "map_id", currentMapId },
-                    { "job", job.ToString() },
-                    { "position", new Dictionary<string, int>
-                        {
-                            { "x", initialCellPos.x },
-                            { "y", initialCellPos.y },
-                            { "z", initialCellPos.z }
-                        }
-                    }
-                });
-                Debug.Log($"发送玩家上线消息: {playerId}, 地图: {currentMapId}, 位置: {initialCellPos}, 职业: {job}");
+                NetworkMessageHandler.Instance.SendPlayerOnlineRequest(playerId, currentMapId, job, initialCellPos);
+                Debug.Log($"玩家 {playerId} 发送上线消息，地图: {currentMapId}, 位置: {initialCellPos}, 职业: {job}");
             }
             else
             {

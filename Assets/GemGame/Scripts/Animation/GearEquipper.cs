@@ -2,7 +2,7 @@ using UnityEngine;
 using Spine;
 using Spine.Unity;
 using Game.Core;
-using Game.Managers;
+using Game.Data;
 
 namespace Game.Animation
 {
@@ -11,7 +11,7 @@ namespace Game.Animation
         [SerializeField] private SkeletonAnimation characterSkeleton;
         [SerializeField] private PlayerHero playerHero;
 
-        public HeroJobs Job { get; set; }
+        public HeroRole Job { get; set; }
         public int Melee { get; set; }
         public int Shield { get; set; }
         public int Bow { get; set; }
@@ -68,18 +68,18 @@ namespace Game.Animation
             // 根据职业添加武器和副手皮肤
             switch (Job)
             {
-                case HeroJobs.Warrior:
+                case HeroRole.Warrior:
                     AddSkin(newCustomSkin, skeletonData, "MELEE", Melee);
                     AddSkin(newCustomSkin, skeletonData, "SHIELD", Shield - 1, Shield == 0);
                     break;
-                case HeroJobs.Archer:
+                case HeroRole.Hunter:
                     AddSkin(newCustomSkin, skeletonData, "BOW", Bow);
                     AddSkin(newCustomSkin, skeletonData, "QUIVER", Quiver);
                     break;
-                case HeroJobs.Elementalist:
+                case HeroRole.Mage:
                     AddSkin(newCustomSkin, skeletonData, "STAFF", Staff);
                     break;
-                case HeroJobs.Duelist:
+                case HeroRole.Rogue:
                     AddSkin(newCustomSkin, skeletonData, "MELEE", Melee);
                     AddSkin(newCustomSkin, skeletonData, "OFFHAND", DuelistOffhand);
                     break;

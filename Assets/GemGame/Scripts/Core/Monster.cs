@@ -220,7 +220,7 @@ namespace Game.Core
             base.MoveTo(cellPos);
         }
 
-        public override void PlayAnimation(string animationName, HeroJobs job = HeroJobs.Warrior)
+        public override void PlayAnimation(string animationName, HeroRole job = HeroRole.Warrior)
         {
             if (monsterAnimator != null)
             {

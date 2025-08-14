@@ -2,6 +2,7 @@ using Game.Animation;
 using Game.Core;
 using System.Collections.Generic;
 using UnityEngine;
+using Game.Data;
 
 namespace Game.Managers
 {
@@ -31,7 +32,7 @@ namespace Game.Managers
             
         }
 
-        public void AddPlayer(string playerId, Vector3Int cellPos, string mapId, HeroJobs job = HeroJobs.Warrior)
+        public void AddPlayer(string playerId, Vector3Int cellPos, string mapId, HeroRole job = HeroRole.Warrior)
         {
             if (otherPlayers.ContainsKey(playerId))
             {
@@ -63,7 +64,7 @@ namespace Game.Managers
             Debug.Log($"成功添加远程玩家 {playerId} 在位置 {cellPos}，地图 {mapId}, job: {job}");
         }
 
-        public void UpdatePlayerPosition(string playerId, Vector3Int cellPos, string mapId, HeroJobs job = HeroJobs.Warrior)
+        public void UpdatePlayerPosition(string playerId, Vector3Int cellPos, string mapId, HeroRole job = HeroRole.Warrior)
         {
             if (otherPlayers.ContainsKey(playerId))
             {

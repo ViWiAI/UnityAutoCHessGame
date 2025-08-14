@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using TMPro;
 
 namespace Game.Managers
 {
@@ -17,10 +18,10 @@ namespace Game.Managers
         [SerializeField] private Color highlightColor = new Color(1f, 1f, 0.5f, 0.8f);
         [SerializeField] private Color obstacleHighlightColor = new Color(1f, 0f, 0f, 0.8f);
         [SerializeField] private GameObject gridInfo; // 右键信息面板（Image + Text）
-        [SerializeField] private GameObject tips; // 坐标提示（Image + 两个 Text）
+        [SerializeField] private TMP_Text TipsMouse;
+        [SerializeField] private TMP_Text TipsPlayer;
 
-        private Text TipsMouse; // 显示鼠标坐标
-        public Text TipsPlayer; // 备用（可显示玩家信息）
+  
         private Text gridInfoText;
         private PlayerHero playerHero;
         private Vector3Int lastHighlightedCell;
@@ -57,24 +58,7 @@ namespace Game.Managers
                 Debug.LogError("highlightSprite 未在 InputManager Inspector 中分配");
             }
 
-            // 初始化 UI 组件
-            if (tips != null)
-            {
-                Text[] texts = tips.GetComponentsInChildren<Text>();
-                if (texts.Length >= 2)
-                {
-                    TipsMouse = texts[0]; // 第一个 Text 显示坐标
-                    TipsPlayer = texts[1]; // 第二个 Text 备用
-                }
-                else
-                {
-                    Debug.LogWarning("Tips 未包含足够的 Text 组件（需要 2 个）");
-                }
-            }
-            else
-            {
-                Debug.LogWarning("Tips 未在 InputManager Inspector 中分配");
-            }
+           
 
             if (gridInfo != null)
             {
@@ -108,35 +92,35 @@ namespace Game.Managers
         //}
 
         // 更新场景相关引用
-        private void UpdateReferences()
-        {
-            if (tips == null || gridInfo == null)
-            {
-                Canvas canvas = FindObjectOfType<Canvas>();
-                if (canvas != null)
-                {
-                    GameObject[] uiObjects = canvas.GetComponentsInChildren<GameObject>();
-                    foreach (var obj in uiObjects)
-                    {
-                        if (obj.name == "Tips") tips = obj;
-                        if (obj.name == "GridInfo") gridInfo = obj;
-                    }
-                    if (tips != null)
-                    {
-                        Text[] texts = tips.GetComponentsInChildren<Text>();
-                        if (texts.Length >= 2)
-                        {
-                            TipsMouse = texts[0];
-                            TipsPlayer = texts[1];
-                        }
-                    }
-                    gridInfoText = gridInfo != null ? gridInfo.GetComponentInChildren<Text>() : null;
-                }
-            }
+        //private void UpdateReferences()
+        //{
+        //    if (tips == null || gridInfo == null)
+        //    {
+        //        Canvas canvas = FindObjectOfType<Canvas>();
+        //        if (canvas != null)
+        //        {
+        //            GameObject[] uiObjects = canvas.GetComponentsInChildren<GameObject>();
+        //            foreach (var obj in uiObjects)
+        //            {
+        //                if (obj.name == "Tips") tips = obj;
+        //                if (obj.name == "GridInfo") gridInfo = obj;
+        //            }
+        //            if (tips != null)
+        //            {
+        //                Text[] texts = tips.GetComponentsInChildren<Text>();
+        //                if (texts.Length >= 2)
+        //                {
+        //                    TipsMouse = texts[0];
+        //                    TipsPlayer = texts[1];
+        //                }
+        //            }
+        //            gridInfoText = gridInfo != null ? gridInfo.GetComponentInChildren<Text>() : null;
+        //        }
+        //    }
            
-            ResetState();
-            Debug.Log("InputManager 更新引用并重置状态");
-        }
+        //    ResetState();
+        //    Debug.Log("InputManager 更新引用并重置状态");
+        //}
 
         // 重置状态
         private void ResetState()
@@ -193,7 +177,7 @@ namespace Game.Managers
 
             if (TipsMouse != null)
             {
-                TipsMouse.text = $"{currentCell.x},{currentCell.y}";
+                TipsMouse.text = $"{currentCell.x} , {currentCell.y}";
             }
 
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())

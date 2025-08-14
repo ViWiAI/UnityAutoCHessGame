@@ -4,6 +4,16 @@ using UnityEngine;
 namespace Game.Data
 {
     [System.Serializable]
+
+
+    public enum PlayerAnimations
+    {
+        Idle, Walk, Attack1, Attack2, Hurt, Death, Special, Buff, Run, FullJump, Jump1, Jump2, Jump3
+    }
+    public enum HeroRole
+    {
+        Warrior, Mage, Hunter, Rogue, Priest
+    }
     public class MonsterData
     {
         public string monsterId; // π÷ŒÔŒ®“ª ID£®»Á "Goblin", "Dragon"£©

@@ -7,12 +7,13 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.Tilemaps;
 using UnityEngine.UI;
+using Game.Data;
 
 namespace Game.Core
 {
     public interface IAnimatable
     {
-        void PlayAnimation(string animationName, HeroJobs job = HeroJobs.Warrior);
+        void PlayAnimation(string animationName, HeroRole job = HeroRole.Warrior);
     }
 
     public abstract class Hero : MonoBehaviour, IAnimatable
@@ -294,7 +295,7 @@ namespace Game.Core
                         if (isLocalPlayer)
                         {
                             Vector3Int currentCell = MapManager.Instance.GetTilemap().WorldToCell(targetPosition);
-                            InputManager.Instance.setTipsPlayerText(currentCell.x.ToString() + "," + currentCell.y.ToString());
+                            InputManager.Instance.setTipsPlayerText(currentCell.x.ToString() + " , " + currentCell.y.ToString());
                         }
                         
                         UpdateOrientation();
@@ -499,7 +500,7 @@ namespace Game.Core
         public string GetCurrentMapId() => currentMapId;
 
 
-        public virtual void PlayAnimation(string animationName, HeroJobs job = HeroJobs.Warrior)
+        public virtual void PlayAnimation(string animationName, HeroRole job = HeroRole.Warrior)
         {
             switch (heroType)
             {

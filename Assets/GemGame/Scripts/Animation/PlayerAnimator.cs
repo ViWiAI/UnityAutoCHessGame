@@ -4,7 +4,7 @@ using UnityEngine;
 using Spine;
 using Spine.Unity;
 using Game.Core;
-using Game.Managers;
+using Game.Data;
 
 namespace Game.Animation
 {
@@ -17,7 +17,7 @@ namespace Game.Animation
         private PlayerHero playerHero;
 
         // 职业动画映射
-        private Dictionary<HeroJobs, Dictionary<PlayerAnimations, string>> jobsAnimations = new Dictionary<HeroJobs, Dictionary<PlayerAnimations, string>>();
+        private Dictionary<HeroRole, Dictionary<PlayerAnimations, string>> jobsAnimations = new Dictionary<HeroRole, Dictionary<PlayerAnimations, string>>();
 
         private void Awake()
         {
@@ -126,10 +126,11 @@ namespace Game.Animation
                 { PlayerAnimations.Jump3, "Jump3" }
             };
 
-            jobsAnimations.Add(HeroJobs.Warrior, warriorAnimations);
-            jobsAnimations.Add(HeroJobs.Archer, archerAnimations);
-            jobsAnimations.Add(HeroJobs.Elementalist, elementalistAnimations);
-            jobsAnimations.Add(HeroJobs.Duelist, duelistAnimations);
+            jobsAnimations.Add(HeroRole.Warrior, warriorAnimations);
+            jobsAnimations.Add(HeroRole.Mage, elementalistAnimations);
+            jobsAnimations.Add(HeroRole.Hunter, archerAnimations);
+            jobsAnimations.Add(HeroRole.Rogue, duelistAnimations);
+            jobsAnimations.Add(HeroRole.Priest, elementalistAnimations);
         }
 
         private void OnEventAnimation(TrackEntry trackEntry, Spine.Event e)
@@ -169,7 +170,7 @@ namespace Game.Animation
             }
         }
 
-        public void ChangeAnimation(string animationString, HeroJobs job)
+        public void ChangeAnimation(string animationString, HeroRole job)
         {
             if (playerHero.isDead && animationString != "Death") return;
 
@@ -202,7 +203,7 @@ namespace Game.Animation
             }
         }
 
-        public void JobChanged(HeroJobs newJob)
+        public void JobChanged(HeroRole newJob)
         {
             //if (gearEquipper.Job != newJob)
             //{
@@ -211,7 +212,7 @@ namespace Game.Animation
             //}
         }
 
-        private void AnimationManager(HeroJobs job)
+        private void AnimationManager(HeroRole job)
         {
             if (characterSkeleton == null || !jobsAnimations.ContainsKey(job))
             {
@@ -233,15 +234,5 @@ namespace Game.Animation
                 Debug.LogError($"无法播放动画 {animationName} for {job}: {ex.Message}");
             }
         }
-    }
-
-    public enum PlayerAnimations
-    {
-        Idle, Walk, Attack1, Attack2, Hurt, Death, Special, Buff, Run, FullJump, Jump1, Jump2, Jump3
-    }
-
-    public enum HeroJobs
-    {
-        Warrior, Archer, Elementalist, Duelist
     }
 }

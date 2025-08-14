@@ -1,6 +1,8 @@
 using Game.Animation;
+using Game.Data;
 using Game.Managers;
 using Game.Network;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -9,13 +11,13 @@ namespace Game.Core
 {
     public class PlayerHero : Hero
     {
-        [SerializeField] private HeroJobs currentJob = HeroJobs.Warrior;
+        [SerializeField] private HeroRole currentJob = HeroRole.Warrior;
         private string playerId;
         private string teamId;
         private float lastSkeletonScaleX = 1f;
         private Vector3Int? lastClickedCell;
 
-        public void Initialize(string playerId, bool isLocalPlayer, HeroJobs job = HeroJobs.Warrior)
+        public void Initialize(string playerId, bool isLocalPlayer, HeroRole job = HeroRole.Warrior)
         {
             this.playerId = playerId.ToLower();
             this.isLocalPlayer = isLocalPlayer;
@@ -49,7 +51,7 @@ namespace Game.Core
             Debug.Log($"PlayerHero {playerId} 销毁，isLocalPlayer: {isLocalPlayer}, job: {currentJob}");
         }
 
-        public void SetJob(HeroJobs newJob)
+        public void SetJob(HeroRole newJob)
         {
             if (currentJob != newJob)
             {
@@ -58,7 +60,7 @@ namespace Game.Core
             }
         }
 
-        public HeroJobs GetJob() => currentJob;
+        public HeroRole GetJob() => currentJob;
 
         public bool IsDead() => isDead;
 
@@ -90,19 +92,10 @@ namespace Game.Core
                 // 重复点击检查已由 InputManager 处理，这里直接发送请求
                 lastClickedCell = cellPos;
 
-                WebSocketManager.Instance.Send(new Dictionary<string, object>
-                {
-                    { "type", "move_request" },
-                    { "player_id", playerId },
-                    { "map_id", currentMapId },
-                    { "cell", new Dictionary<string, int>
-                        {
-                            { "x", cellPos.x },
-                            { "y", cellPos.y },
-                            { "z", cellPos.z }
-                        }
-                    }
-                });
+                // 构造二进制 payload
+                NetworkMessageHandler.Instance.SendMoveRequest(playerId, currentMapId, cellPos);
+
+
                 Debug.Log($"本地玩家 {playerId} 发送移动请求到 {cellPos}");
             }
             else
@@ -139,12 +132,12 @@ namespace Game.Core
             }
         }
 
-        public override void PlayAnimation(string animationName, HeroJobs job = HeroJobs.Warrior)
+        public override void PlayAnimation(string animationName, HeroRole job = HeroRole.Warrior)
         {
             PlayerAnimator animator = GetComponent<PlayerAnimator>();
             if (animator != null)
             {
-                animator.ChangeAnimation(animationName, job == HeroJobs.Warrior ? currentJob : job);
+                animator.ChangeAnimation(animationName, job == HeroRole.Warrior ? currentJob : job);
             }
             else
             {
@@ -165,32 +158,32 @@ namespace Game.Core
         public void JoinTeam(string newTeamId)
         {
             teamId = newTeamId;
-            WebSocketManager.Instance.Send(new Dictionary<string, object>
-            {
-                { "type", "team_join" },
-                { "player_id", playerId },
-                { "team_id", teamId }
-            });
+            //WebSocketManager.Instance.Send(new Dictionary<string, object>
+            //{
+            //    { "type", "team_join" },
+            //    { "player_id", playerId },
+            //    { "team_id", teamId }
+            //});
         }
 
         public void RequestPVPMatch(string mode)
         {
-            WebSocketManager.Instance.Send(new Dictionary<string, object>
-            {
-                { "type", "pvp_match" },
-                { "player_id", playerId },
-                { "team_id", teamId },
-                { "mode", mode }
-            });
+            //WebSocketManager.Instance.Send(new Dictionary<string, object>
+            //{
+            //    { "type", "pvp_match" },
+            //    { "player_id", playerId },
+            //    { "team_id", teamId },
+            //    { "mode", mode }
+            //});
         }
 
         private void RequestMapData()
         {
-            WebSocketManager.Instance.Send(new Dictionary<string, object>
-            {
-                { "type", "get_player_map" },
-                { "player_id", playerId }
-            });
+            //WebSocketManager.Instance.Send(new Dictionary<string, object>
+            //{
+            //    { "type", "get_player_map" },
+            //    { "player_id", playerId }
+            //});
         }
     }
 }

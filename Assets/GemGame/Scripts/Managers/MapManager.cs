@@ -98,12 +98,8 @@ namespace Game.Managers
 
         private void OnDestroy()
         {
-            // 移除 WebSocket 事件订阅
-            if (WebSocketManager.Instance != null)
-            {
-                WebSocketManager.Instance.OnMessageReceived -= HandleServerMessage;
-            }
 
+        
             // 如果当前实例是单例，清除 Instance
             if (Instance == this)
             {
@@ -113,9 +109,7 @@ namespace Game.Managers
 
         private void Start()
         {
-            // 订阅 WebSocket 事件
-            WebSocketManager.Instance.OnMessageReceived += HandleServerMessage;
-
+           
             // 更新所有 PlayerHero
          //   UpdatePlayerHeroes();
         }
@@ -302,16 +296,16 @@ namespace Game.Managers
             var heroes = FindObjectsOfType<PlayerHero>();
             foreach (var hero in heroes)
             {
-                WebSocketManager.Instance.Send(new Dictionary<string, object>
-                {
-                    { "type", "interact" },
-                    { "map_id", mapId },
-                    { "cell", new { x = cell.x, y = cell.y, z = cell.z } },
-                    { "interact_type", type },
-                    { "item_id", itemId },
-                    { "player_id", hero.GetPlayerId() },
-                    { "team_id", hero.GetTeamId() }
-                });
+                //WebSocketManager.Instance.Send(new Dictionary<string, object>
+                //{
+                //    { "type", "interact" },
+                //    { "map_id", mapId },
+                //    { "cell", new { x = cell.x, y = cell.y, z = cell.z } },
+                //    { "interact_type", type },
+                //    { "item_id", itemId },
+                //    { "player_id", hero.GetPlayerId() },
+                //    { "team_id", hero.GetTeamId() }
+                //});
             }
         }
 

@@ -1,6 +1,9 @@
+using Best.HTTP.Shared.PlatformSupport.Memory;
 using Game.Core;
+using Game.Data;
 using Game.Managers;
 using Game.Network;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using TMPro;
@@ -13,26 +16,53 @@ namespace Game.Managers
     {
         public static UIManager Instance { get; private set; }
 
+        //登录UI
         [SerializeField] private GameObject LoginUI;
+
+        //登录UI 按钮
         [SerializeField] private Button buttonLogin;
         [SerializeField] private Button buttonLoginNow;
         [SerializeField] private Button buttonSignup;
         [SerializeField] private Button closeLogin;
         [SerializeField] private Button buttonPwd;
-        [SerializeField] private Button buttonCreateCharacter;
         [SerializeField] private Button buttonStartGame;
+
+        [SerializeField] private Button buttonCreateCharacter;
+        [SerializeField] private Button buttonMyCharacter;
+
+        //角色UI按钮
+        [SerializeField] private Button buttonCharacterWarrior;
+        [SerializeField] private Button buttonCharacterMage;
+        [SerializeField] private Button buttonCharacterHunter;
+        [SerializeField] private Button buttonCharacterRogue;
+        [SerializeField] private Button buttonCharacterPriest;
+        //角色UI按钮 焦点
+        [SerializeField] private GameObject focusCharacterWarrior;
+        [SerializeField] private GameObject focusCharacterMage;
+        [SerializeField] private GameObject focusCharacterHunter;
+        [SerializeField] private GameObject focusCharacterRogue;
+        [SerializeField] private GameObject focusCharacterPriest;
+
+        // 简介UI
+        [SerializeField] private TextMeshProUGUI descriptionText;
+
         [SerializeField] private TMP_InputField username;
         [SerializeField] private TMP_InputField password;
+
+        [SerializeField] private TMP_InputField characterName;
+
         [SerializeField] private GameObject errorMessage; // 父 GameObject，包含 TextMeshProUGUI
         [SerializeField] private GameObject tipsMessage;
         [SerializeField] private GameObject UIButton;
-        [SerializeField] private GameObject CharacterSelectPanel;
+        [SerializeField] private GameObject GameUI;
+        [SerializeField] private GameObject CharacterUI;
 
 
         private TextMeshProUGUI errorText; // TextMeshProUGUI 组件
         private TextMeshProUGUI tipsText; // TextMeshProUGUI 组件
         private string signupUrl = "https://www.baidu.com";
         private string forgotPwdUrl = "https://www.baidu.com";
+        
 
         private void Awake()
         {
@@ -85,19 +115,146 @@ namespace Game.Managers
                 }
             }
 
+            buttonStartGame.interactable = false;
+
             // 绑定按钮点击事件
             buttonLogin.onClick.AddListener(Click_Login);
             buttonLoginNow.onClick.AddListener(Click_LoginNow);
             buttonSignup.onClick.AddListener(Click_Signup);
             closeLogin.onClick.AddListener(Close_Login);
             buttonPwd.onClick.AddListener(Click_Pwd);
-            buttonCreateCharacter.onClick.AddListener(Click_CreateCharacter);
             buttonStartGame.onClick.AddListener(Click_StartGame);
+
+            buttonCharacterWarrior.onClick.AddListener(Click_Warrior);
+            buttonCharacterMage.onClick.AddListener(Click_Mage);
+            buttonCharacterHunter.onClick.AddListener(Click_Hunter);
+            buttonCharacterRogue.onClick.AddListener(Click_Rogue);
+            buttonCharacterPriest.onClick.AddListener(Click_Priest);
+
+            buttonCreateCharacter.onClick.AddListener(Click_CreateCharacter);
+            buttonMyCharacter.onClick.AddListener(Click_MyCharacter);
+
+            string description = LocalizationManager.Instance.GetJobDescription(HeroRole.Warrior);
+            descriptionText.richText = true;
+            descriptionText.text = description;
+            StartCoroutine(ShowDescriptionEffect());
+        }
+
+        private void Click_MyCharacter()
+        {
+            Debug.Log("Click_MyCharacter！");
         }
 
         private void Click_CreateCharacter()
+        {
+            if (GameManager.Instance.GetLoginStatus() == false)
+            {
+                // 获取输入框的文本
+                string name = characterName.text;
+
+                // 验证输入是否有效
+                if (string.IsNullOrEmpty(name))
+                {
+                    ShowErrorMessage("角色名字不能为空！");
+                    return;
+                }
+
+                // 通知服务器用户登录
+                if (WebSocketManager.Instance.IsConnected())
+                {
+                    NetworkMessageHandler.Instance.SendCreateCharacter(name, CharacterManager.Instance.selectRole,"362395084@qq.com");
+                    Debug.Log($"发送角色创建消息: username: {characterName}, Role: {CharacterManager.Instance.selectRole}");
+                }
+                else
+                {
+                    ShowErrorMessage("网络未连接，请检查网络！");
+                }
+            }
+        }
+
+        private void Click_Warrior()
         { 
-            
+            CharacterManager.Instance.InitRoleCharacter(HeroRole.Warrior);
+            focusCharacterWarrior.SetActive(true);
+            focusCharacterMage.SetActive(false);
+            focusCharacterHunter.SetActive(false);
+            focusCharacterRogue.SetActive(false);
+            focusCharacterPriest.SetActive(false);
+            string description = LocalizationManager.Instance.GetJobDescription(HeroRole.Warrior);
+            descriptionText.text = "";
+            descriptionText.richText = true;
+            descriptionText.text = description;
+            StartCoroutine(ShowDescriptionEffect());
+        }
+        private void Click_Mage()
+        {
+            CharacterManager.Instance.InitRoleCharacter(HeroRole.Mage);
+            focusCharacterWarrior.SetActive(false);
+            focusCharacterMage.SetActive(true);
+            focusCharacterHunter.SetActive(false);
+            focusCharacterRogue.SetActive(false);
+            focusCharacterPriest.SetActive(false);
+            string description = LocalizationManager.Instance.GetJobDescription(HeroRole.Mage);
+            descriptionText.text = "";
+            descriptionText.richText = true;
+            descriptionText.text = description;
+            StartCoroutine(ShowDescriptionEffect());
+        }
+        private void Click_Hunter()
+        {
+            CharacterManager.Instance.InitRoleCharacter(HeroRole.Hunter);
+            focusCharacterWarrior.SetActive(false);
+            focusCharacterMage.SetActive(false);
+            focusCharacterHunter.SetActive(true);
+            focusCharacterRogue.SetActive(false);
+            focusCharacterPriest.SetActive(false);
+            string description = LocalizationManager.Instance.GetJobDescription(HeroRole.Hunter);
+            descriptionText.text = "";
+            descriptionText.richText = true;
+            descriptionText.text = description;
+            StartCoroutine(ShowDescriptionEffect());
+        }
+        private void Click_Rogue()
+        {
+            CharacterManager.Instance.InitRoleCharacter(HeroRole.Rogue);
+            focusCharacterWarrior.SetActive(false);
+            focusCharacterMage.SetActive(false);
+            focusCharacterHunter.SetActive(false);
+            focusCharacterRogue.SetActive(true);
+            focusCharacterPriest.SetActive(false);
+            string description = LocalizationManager.Instance.GetJobDescription(HeroRole.Rogue);
+            descriptionText.text = "";
+            descriptionText.richText = true;
+            descriptionText.text = description;
+            StartCoroutine(ShowDescriptionEffect());
+        }
+        private void Click_Priest()
+        {
+            CharacterManager.Instance.InitRoleCharacter(HeroRole.Priest);
+            focusCharacterWarrior.SetActive(false);
+            focusCharacterMage.SetActive(false);
+            focusCharacterHunter.SetActive(false);
+            focusCharacterRogue.SetActive(false);
+            focusCharacterPriest.SetActive(true);
+            string description = LocalizationManager.Instance.GetJobDescription(HeroRole.Priest);
+            descriptionText.text = "";
+            descriptionText.richText = true;
+            descriptionText.text = description;
+            StartCoroutine(ShowDescriptionEffect());
+        }
+
+        private System.Collections.IEnumerator ShowDescriptionEffect()
+        {
+            descriptionText.alpha = 0f;
+            float fadeDuration = 1f;
+            float timer = 0f;
+            while (timer < fadeDuration)
+            {
+                timer += Time.deltaTime;
+                descriptionText.alpha = Mathf.Lerp(0f, 1f, timer / fadeDuration);
+                yield return null;
+            }
+            Debug.Log($"职业 的简介显示完成！");
         }
 
         private void Click_StartGame()
@@ -121,12 +278,8 @@ namespace Game.Managers
             // 通知服务器用户登录
             if (WebSocketManager.Instance.IsConnected())
             {
-                WebSocketManager.Instance.Send(new Dictionary<string, object>
-                {
-                    { "type", "player_login" },
-                    { "username", usernameText },
-                    { "password", passwordText }
-                });
+                NetworkMessageHandler.Instance.SendLoginRequest(usernameText, passwordText);
+                
                 Debug.Log($"发送玩家登录消息: username: {usernameText}, password: {passwordText}");
                 // 假设服务器会异步返回结果，错误提示在 WebSocket 回调中处理
             }
@@ -236,9 +389,14 @@ namespace Game.Managers
             UIButton.SetActive(show);
         }
 
-        public void ShowCharacterSelectPanel(bool show)
+        public void ShowGameUI(bool show)
         {
-            CharacterSelectPanel.SetActive(show);
+            GameUI.SetActive(show);
+        }
+
+        public void ShowCharacterUI(bool show)
+        {
+            CharacterUI.SetActive(show);
         }
 
         private void Update()

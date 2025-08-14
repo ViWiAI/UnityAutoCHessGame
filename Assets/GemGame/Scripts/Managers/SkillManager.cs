@@ -31,7 +31,7 @@ namespace Game.Managers
 
         private void Start()
         {
-            WebSocketManager.Instance.OnMessageReceived += HandleServerMessage;
+
         }
 
         private void HandleServerMessage(Dictionary<string, object> data)
@@ -48,14 +48,14 @@ namespace Game.Managers
 
         private void NotifyServer(Hero caster, Skill skill, Vector3Int targetCell)
         {
-            WebSocketManager.Instance.Send(new Dictionary<string, object>
-            {
-                { "type", "skill" },
-                { "player_id", caster is PlayerHero ? "Player_001" : null },
-                { "skill_id", skill.skillId },
-                { "map_id", caster.GetCurrentMapId() },
-                { "target_cell", new { x = targetCell.x, y = targetCell.y, z = targetCell.z } }
-            });
+            //WebSocketManager.Instance.Send(new Dictionary<string, object>
+            //{
+            //    { "type", "skill" },
+            //    { "player_id", caster is PlayerHero ? "Player_001" : null },
+            //    { "skill_id", skill.skillId },
+            //    { "map_id", caster.GetCurrentMapId() },
+            //    { "target_cell", new { x = targetCell.x, y = targetCell.y, z = targetCell.z } }
+            //});
         }
 
         public void AddSkill(Skill skill)
