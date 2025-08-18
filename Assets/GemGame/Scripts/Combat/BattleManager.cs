@@ -9,7 +9,7 @@ namespace Game.Combat
     public class BattleManager : MonoBehaviour
     {
         public static BattleManager Instance { get; private set; }
-        private string currentRoomId;
+        private int currentRoomId;
         public List<Hero> teammates;
         public List<Hero> enemies;
         private Dictionary<Hero, Hero> lastAttackers = new Dictionary<Hero, Hero>(); // 记录最后攻击者的映射
@@ -29,23 +29,23 @@ namespace Game.Combat
             }
         }
 
-        public void StartBattle(PlayerHero player, List<Hero> enemies, string battleMapId, string battleRoomId, List<object> teamMembers)
+        public void StartBattle(PlayerHero player, List<Hero> enemies, int battleMapId, int battleRoomId, List<object> teamMembers)
         {
             currentRoomId = battleRoomId;
             teammates.Clear(); // 清空旧队伍
             teammates.Add(player);
             this.enemies = enemies ?? new List<Hero>();
 
-            foreach (var memberId in teamMembers)
-            {
-                if (memberId.ToString() != player.GetPlayerId())
-                {
-                    // 假设存在 InstantiatePlayer 方法（需实现或替换）
-                    // Hero teammate = InstantiatePlayer(memberId.ToString());
-                    // teammate.SetCurrentMapId(battleMapId);
-                    // teammates.Add(teammate);
-                }
-            }
+            //foreach (var memberId in teamMembers)
+            //{
+            //    if (memberId.ToString() != player.GetPlayerId())
+            //    {
+            //        假设存在 InstantiatePlayer 方法（需实现或替换）
+            //         Hero teammate = InstantiatePlayer(memberId.ToString());
+            //        teammate.SetCurrentMapId(battleMapId);
+            //        teammates.Add(teammate);
+            //    }
+            //}
 
             foreach (var enemy in this.enemies)
             {
@@ -66,7 +66,7 @@ namespace Game.Combat
             Debug.Log($"PVE 战斗开始: 房间 {battleRoomId}, 地图 {battleMapId}, 队友数: {teammates.Count}, 敌人数: {enemies.Count}");
         }
 
-        private void InitializePositions(string mapId)
+        private void InitializePositions(int mapId)
         {
             int index = 0;
             foreach (var teammate in teammates)
@@ -97,7 +97,7 @@ namespace Game.Combat
             //    { "player_id", teammates.Count > 0 ? (teammates[0] as PlayerHero)?.GetPlayerId() : "" }
             //});
             //UIManager.Instance.ShowBattleUI(false);
-            currentRoomId = null;
+            currentRoomId = 0;
             lastAttackers.Clear(); // 清理攻击者记录
             teammates.Clear();
             enemies.Clear();

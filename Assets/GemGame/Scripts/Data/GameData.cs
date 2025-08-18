@@ -14,6 +14,20 @@ namespace Game.Data
     {
         Warrior, Mage, Hunter, Rogue, Priest
     }
+
+    // 角色数据结构
+    [System.Serializable]
+    public class PlayerCharacterInfo
+    {
+        public int CharacterId { get; set; }
+        public string Name { get; set; }
+        public int Level { get; set; }
+        public int Role { get; set; }
+        public int SkinId { get; set; }
+        public int MapId { get; set; }
+        public int X { get; set; }
+        public int Y { get; set; }
+    }
     public class MonsterData
     {
         public string monsterId; // 怪物唯一 ID（如 "Goblin", "Dragon"）

@@ -54,7 +54,7 @@ namespace Game.Combat
         }
 
         // 初始化怪物
-        public List<Hero> InitializeMonsters(List<string> monsterIds, string battleMapId)
+        public List<Hero> InitializeMonsters(List<string> monsterIds, int battleMapId)
         {
             List<Hero> monsters = new List<Hero>();
             foreach (var monsterId in monsterIds)
@@ -95,7 +95,7 @@ namespace Game.Combat
         }
 
         // 初始化宠物
-        public List<Hero> InitializePets(List<string> petIds, string battleMapId, PlayerHero owner)
+        public List<Hero> InitializePets(List<string> petIds, int battleMapId, PlayerHero owner)
         {
             List<Hero> pets = new List<Hero>();
             foreach (var petId in petIds)

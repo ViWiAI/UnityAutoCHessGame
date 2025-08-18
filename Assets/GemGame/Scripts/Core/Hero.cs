@@ -28,7 +28,7 @@ namespace Game.Core
         protected Slider healthBarSlider; // 血条 Slider
         protected Slider energeBarSlider; // 魔法条 Slider
         protected GameObject heroBarInstance; // 血条实例
-        protected string currentMapId;
+        protected int currentMapId;
         protected AttackMode currentAttackMode;
         protected List<Equipment> equipment = new List<Equipment>();
         public Stats stats;
@@ -95,7 +95,7 @@ namespace Game.Core
                 float AC = 0f, float MC = 0f, float attackDamage = 10f, float attackSpeed = 1f,
                 float spellPower = 0f, float MPRegen = 1f, float HPRegen = 1f,
                 float critRate = 0.05f, float critDmg = 1.5f, float dodgeRate = 0.05f,
-                float moveSpeed = 10f, float attackRange = 1f,
+                float moveSpeed = 3f, float attackRange = 1f,
                 float Str = 10f, float Sta = 10f, float Dex = 10f, float Int = 10f, float Spi = 10f)
             {
                 this.curHP = curHP;
@@ -432,7 +432,7 @@ namespace Game.Core
 
         public HeroType GetHeroType() => heroType;
 
-        public void SetCurrentMapId(string mapId)
+        public void SetCurrentMapId(int mapId)
         {
             currentMapId = mapId;
         }
@@ -497,7 +497,7 @@ namespace Game.Core
         {
             return position + new Vector3(0, spriteHeightOffset, 0);
         }
-        public string GetCurrentMapId() => currentMapId;
+        public int GetCurrentMapId() => currentMapId;
 
 
         public virtual void PlayAnimation(string animationName, HeroRole job = HeroRole.Warrior)
@@ -747,6 +747,21 @@ namespace Game.Core
          //   Debug.Log($"移动到 {cellPos}，路径: {string.Join(" -> ", path)}");
         }
 
+        public void ChangeMove()
+        {
+            path.Clear();
+            pathIndex = 0;
+            currentTargetPosition = null; // 清除目标位置
+                                          // 清除所有相关路径缓存
+            if (MapManager.Instance != null && MapManager.Instance.GetTilemap() != null)
+            {
+                Vector3Int currentCell = MapManager.Instance.GetTilemap().WorldToCell(transform.position);
+                ClearPathCacheForCell(currentCell);
+            }
+
+            Debug.Log($"{heroName} 移动路径更换");
+        }
+        
         public void StopMoving()
         {
             if (isMoving)
@@ -767,20 +782,12 @@ namespace Game.Core
                     playerHero.ResetClickedCell();
                 }
 
-                if (!isHurtAnimationPlaying && !isDead && !isWalking)
+                if (!isHurtAnimationPlaying && !isDead)
                 {
                     PlayAnimation("Idle");
                 }
 
                 Debug.Log($"{heroName} 移动已中断");
-            }
-            if (isWalking)
-            {
-                path.Clear();
-                pathIndex = 0;
-                currentTargetPosition = null; // 清除目标位置
-                SnapToGrid();
-                PlayAnimation("Idle");
             }
         }
 

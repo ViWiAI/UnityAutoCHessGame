@@ -12,12 +12,36 @@ namespace Game.Managers
     public class GameManager : MonoBehaviour
     {
         public static GameManager Instance { get; private set; }
+
         [SerializeField] private GameObject playerPrefab;
         [SerializeField] private GameObject playerMoveCamera; // 挂载 CinemachineVirtualCamera 的 GameObject
         private PlayerHero playerHero;
-        private string currentMapId;
+        private int currentMapId;
         private bool isLogin;
+        private bool isOnline;
+        private string loginAccount;
         private float spriteHeightOffset = -0.2f;
+
+        public void setMapId(int mapId)
+        {
+            currentMapId = mapId;
+        }
+        public bool GetOnline()
+        {
+            return isOnline;
+        }
+        public void SetOnlineGame(bool status)
+        {
+            isOnline = status;
+        }
+        public string GetLoginAccount()
+        {
+            return loginAccount;
+        }
+        public void SetLoginAccount(string loginAccount)
+        {
+            this.loginAccount = loginAccount;
+        }
 
         public bool GetLoginStatus()
         {
@@ -44,14 +68,13 @@ namespace Game.Managers
 
         private void Start()
         {
-            if (string.IsNullOrEmpty(currentMapId))
-            {
-                currentMapId = SceneManager.GetActiveScene().name;
-            }
-            InitializeLocalPlayer(GridUtility.GenerateRandomPlayerId(), HeroRole.Warrior, new Vector3Int(0, 0, 0));
+            isLogin = false;
+            isOnline = false;
+           
+          //  InitializeLocalPlayer(1, HeroRole.Warrior, new Vector3Int(0, 0, 0));
         }
 
-        private void InitializeLocalPlayer(string playerId, HeroRole job, Vector3Int initialCellPos)
+        private void InitializeLocalPlayer(int playerId, HeroRole job, Vector3Int initialCellPos)
         {
             if (playerHero != null)
             {
@@ -89,7 +112,7 @@ namespace Game.Managers
             Vector3 worldPos = MapManager.Instance.GetTilemap().GetCellCenterWorld(initialCellPos);
             worldPos += new Vector3(0, spriteHeightOffset, 0);
             GameObject playerObj = Instantiate(playerPrefab, worldPos, Quaternion.identity);
-            playerObj.name = $"{playerId}";
+            playerObj.name = $"LocalPlayer_{playerId}";
             playerHero = playerObj.GetComponent<PlayerHero>();
             if (playerHero == null)
             {
@@ -100,14 +123,16 @@ namespace Game.Managers
 
             playerHero.Initialize(playerId, true, job);
             playerHero.SetCurrentMapId(currentMapId);
-            InputManager.Instance.SetPlayer(playerHero);
+
+            PlayerManager.Instance.SetLocalPLayer(playerHero);
 
             // 设置 Cinemachine 的 Follow 目标
-            cinemachineCamera.Follow = playerObj.transform; // 直接跟随 playerObj 的 Transform
+            PlayerCameraFollow.Instance.SetPlayerTarget(playerHero.transform);
+        //    cinemachineCamera.Follow = playerHero.transform; // 直接跟随 playerObj 的 Transform
             Debug.Log($"Cinemachine 设置跟随目标: {playerObj.name}, 位置: {worldPos}, tilemap={MapManager.Instance.GetTilemap()?.name}");
 
             // 通知服务器玩家上线
-            if (WebSocketManager.Instance.IsConnected())
+            if (WebSocketManager.Instance.IsConnected)
             {
                 NetworkMessageHandler.Instance.SendPlayerOnlineRequest(playerId, currentMapId, job, initialCellPos);
                 Debug.Log($"玩家 {playerId} 发送上线消息，地图: {currentMapId}, 位置: {initialCellPos}, 职业: {job}");
@@ -125,7 +150,7 @@ namespace Game.Managers
             return playerHero;
         }
 
-        public void EnterBattle(string battleMapId, string battleRoomId)
+        public void EnterBattle(int battleMapId, int battleRoomId)
         {
             if (MapManager.Instance == null)
             {

@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
 
 namespace Game.Network
@@ -57,6 +58,9 @@ namespace Game.Network
                         break;
                     case WebSocketManager.MessageType.CreateCharacter:
                         HandleCreateCharacter(payload);
+                        break;
+                    case WebSocketManager.MessageType.CharacterList:
+                        HandleCharacterList(payload);
                         break;
                     case WebSocketManager.MessageType.PlayerOnline:
                         HandlePlayerOnline(payload);
@@ -112,10 +116,11 @@ namespace Game.Network
             byte status = payload[0];
             if (status == 0)
             {
+                GameManager.Instance.SetLoginStatus(true);
                 UIManager.Instance.ShowTipsMessage("登录成功");
                 UIManager.Instance.Close_Login();
                 UIManager.Instance.ShowUIButton(false);
-                UIManager.Instance.ShowCharacterUI(true);
+                UIManager.Instance.ShowStartGameUI(true);
             }
             else if (status == 1)
             {
@@ -132,32 +137,68 @@ namespace Game.Network
                 var msg = BinaryProtocol.DecodeString(payload, ref offset);
                 if (status == 1)
                 {
-                    UIManager.Instance.ShowTipsMessage($"创建角色成功: {msg}");
+                    UIManager.Instance.ShowTipsMessage($"{msg}");
                    // UIManager.Instance.Close_CharacterCreation(); // Close character creation UI
-                    UIManager.Instance.ShowGameUI(true); // Show main game UI
+                   // UIManager.Instance.ShowGameUI(true); // Show main game UI
                 }
                 else
                 {
-                    UIManager.Instance.ShowErrorMessage($"创建角色失败: {msg}");
+                    UIManager.Instance.ShowErrorMessage($" {msg}");
                 }
                 Debug.Log($"HandleCreateCharacter: status={status}, message={msg}, payload={BitConverter.ToString(payload)}");
             }
             catch (Exception e)
             {
                 Debug.LogWarning($"HandleCreateCharacter 解析失败: {e.Message}, 数据: {BitConverter.ToString(payload)}");
-                UIManager.Instance.ShowErrorMessage($"创建角色错误: {e.Message}");
+                UIManager.Instance.ShowErrorMessage($"{e.Message}");
+            }
+        }
+
+        private void HandleCharacterList(byte[] payload)
+        {
+            int offset = 0;
+            try
+            {
+                int characterCount = BinaryProtocol.DecodeInt32(payload, ref offset);
+
+                CharacterManager.Instance.CleanPlayerCharacters();
+                for (int i = 0; i < characterCount; i++)
+                {
+                    var characterData = BinaryProtocol.DecodeCharacterInfo(payload, ref offset);
+                    PlayerCharacterInfo character = new PlayerCharacterInfo
+                    {
+                        CharacterId = (int)characterData["characterId"],
+                        Name = (string)characterData["name"],
+                        Level = (int)characterData["level"],
+                        Role = (int)characterData["role"],
+                        SkinId = (int)characterData["skinId"],
+                        MapId = (int)characterData["mapId"],
+                        X = (int)characterData["x"],
+                        Y = (int)characterData["y"]
+                    };
+                    CharacterManager.Instance.AddCharacterList(character);
+                }
+
+                // Update UI with character list
+                UIManager.Instance.ShowCharacterUI(false);
+                CharacterManager.Instance.InitPlayerCharacterList();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"处理角色列表失败: {e.Message}");
             }
         }
 
         private void HandlePlayerOnline(byte[] payload)
         {
             int offset = 0;
-            string playerId = BinaryProtocol.DecodeString(payload, ref offset);
-            string mapId = BinaryProtocol.DecodeString(payload, ref offset);
-            string job = BinaryProtocol.DecodeString(payload, ref offset);
+            int playerId = BinaryProtocol.DecodeInt32(payload, ref offset);
+            int mapId = BinaryProtocol.DecodeInt32(payload, ref offset);
+            int role = BinaryProtocol.DecodeInt32(payload, ref offset);
+            string roleStr = CharacterManager.Instance.RoleToString(role);
             Vector3Int position = BinaryProtocol.DecodePosition(payload, ref offset);
 
-            if (string.IsNullOrEmpty(playerId) || string.IsNullOrEmpty(mapId) || string.IsNullOrEmpty(job))
+            if (playerId == 0 || mapId == 0 || role == 0)
             {
                 Debug.LogWarning("PlayerOnline 消息缺少必要字段");
                 return;
@@ -165,7 +206,7 @@ namespace Game.Network
 
             if (playerId != GameManager.Instance.GetLocalPlayer()?.GetPlayerId())
             {
-                HeroRole heroJob = (HeroRole)Enum.Parse(typeof(HeroRole), job);
+                HeroRole heroJob = (HeroRole)Enum.Parse(typeof(HeroRole), roleStr);
                 PlayerManager.Instance.AddPlayer(playerId, position, mapId, heroJob);
                 Debug.Log($"收到其他玩家上线消息: {playerId}, 地图: {mapId}, 位置: {position}, 职业: {heroJob}");
             }
@@ -187,7 +228,7 @@ namespace Game.Network
                 Vector3Int position = BinaryProtocol.DecodePosition(payload, ref offset);
                 Debug.Log($"MoveConfirmed: position=({position.x}, {position.y})");
 
-                PlayerHero localPlayer = GameManager.Instance.GetLocalPlayer();
+                PlayerHero localPlayer = PlayerManager.Instance.GetLocalPlayer();
                 if (localPlayer == null)
                 {
                     Debug.LogWarning("MoveConfirmed: 本地玩家不存在");
@@ -206,11 +247,11 @@ namespace Game.Network
         private void HandlePlayerMap(byte[] payload)
         {
             int offset = 0;
-            string playerId = BinaryProtocol.DecodeString(payload, ref offset);
-            string mapId = BinaryProtocol.DecodeString(payload, ref offset);
+            int playerId = BinaryProtocol.DecodeInt32(payload, ref offset);
+            int mapId = BinaryProtocol.DecodeInt32(payload, ref offset);
             Vector3Int position = BinaryProtocol.DecodePosition(payload, ref offset);
 
-            if (string.IsNullOrEmpty(playerId) || string.IsNullOrEmpty(mapId))
+            if (playerId == 0 || mapId == 0)
             {
                 Debug.LogWarning("PlayerMap 消息缺少必要字段");
                 return;
@@ -255,13 +296,13 @@ namespace Game.Network
         private void HandlePvPMatch(byte[] payload)
         {
             int offset = 0;
-            string playerId = BinaryProtocol.DecodeString(payload, ref offset);
-            string pvpMapId = BinaryProtocol.DecodeString(payload, ref offset);
-            string pvpRoomId = BinaryProtocol.DecodeString(payload, ref offset);
+            int playerId = BinaryProtocol.DecodeInt32(payload, ref offset);
+            int pvpMapId = BinaryProtocol.DecodeInt32(payload, ref offset);
+            int pvpRoomId = BinaryProtocol.DecodeInt32(payload, ref offset);
             List<string> opponents = BinaryProtocol.DecodeStringArray(payload, ref offset);
             List<string> teamMembers = BinaryProtocol.DecodeStringArray(payload, ref offset);
 
-            if (string.IsNullOrEmpty(playerId) || string.IsNullOrEmpty(pvpMapId) || string.IsNullOrEmpty(pvpRoomId))
+            if (playerId == 0 || pvpMapId == 0 || pvpRoomId == 0)
             {
                 Debug.LogWarning("PvPMatch 消息缺少必要字段");
                 return;
@@ -322,10 +363,10 @@ namespace Game.Network
         }
 
         // 发送方法：上线请求
-        public void SendPlayerOnlineRequest(string playerId, string mapId, HeroRole job, Vector3Int position)
+        public void SendPlayerOnlineRequest(int playerId, int mapId, HeroRole job, Vector3Int position)
         {
-            BufferSegment playerIdSegment = BinaryProtocol.EncodeString(playerId);
-            BufferSegment mapIdSegment = BinaryProtocol.EncodeString(mapId);
+            BufferSegment playerIdSegment = BinaryProtocol.EncodeInt32(playerId);
+            BufferSegment mapIdSegment = BinaryProtocol.EncodeInt32(mapId);
             BufferSegment jobSegment = BinaryProtocol.EncodeString(job.ToString());
             BufferSegment positionSegment = BinaryProtocol.EncodePosition(position);
 
@@ -351,10 +392,10 @@ namespace Game.Network
         }
 
         // 发送方法：移动请求
-        public void SendMoveRequest(string playerId, string mapId, Vector3Int position)
+        public void SendMoveRequest(int playerId, int mapId, Vector3Int position)
         {
-            BufferSegment playerIdSegment = BinaryProtocol.EncodeString(playerId);
-            BufferSegment mapIdSegment = BinaryProtocol.EncodeString(mapId);
+            BufferSegment playerIdSegment = BinaryProtocol.EncodeInt32(playerId);
+            BufferSegment mapIdSegment = BinaryProtocol.EncodeInt32(mapId);
             BufferSegment positionSegment = BinaryProtocol.EncodePosition(position);
 
             int payloadLength = playerIdSegment.Count + mapIdSegment.Count + positionSegment.Count;

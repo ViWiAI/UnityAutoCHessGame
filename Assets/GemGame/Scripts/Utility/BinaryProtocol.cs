@@ -285,64 +285,25 @@ public static class BinaryProtocol
     /// </summary>
     public struct PlayerInfo
     {
-        public string PlayerId;
+        public int PlayerId;
         public string Name;
         public int Level;
-        public int Job;
+        public int Role;
         public Vector3Int Position;
     }
 
-    /// <summary>
-    /// 编码玩家信息
-    /// </summary>
-    /// <param name="info">玩家信息</param>
-    /// <returns>编码后的二进制段</returns>
-    public static BufferSegment EncodePlayerInfo(PlayerInfo info)
+    public static Dictionary<string, object> DecodeCharacterInfo(byte[] payload, ref int offset)
     {
-        BufferSegment playerId = EncodeString(info.PlayerId);
-        BufferSegment name = EncodeString(info.Name);
-        BufferSegment level = EncodeInt32(info.Level);
-        BufferSegment job = EncodeInt32(info.Job);
-        BufferSegment position = EncodePosition(info.Position);
-
-        int totalLength = playerId.Count + name.Count + level.Count + job.Count + position.Count;
-        byte[] buffer = BufferPool.Get(totalLength, true);
-
-        int offset = 0;
-        Array.Copy(playerId.Data, playerId.Offset, buffer, offset, playerId.Count);
-        offset += playerId.Count;
-        Array.Copy(name.Data, name.Offset, buffer, offset, name.Count);
-        offset += name.Count;
-        Array.Copy(level.Data, level.Offset, buffer, offset, level.Count);
-        offset += level.Count;
-        Array.Copy(job.Data, job.Offset, buffer, offset, job.Count);
-        offset += job.Count;
-        Array.Copy(position.Data, position.Offset, buffer, offset, position.Count);
-
-        BufferPool.Release(playerId.Data);
-        BufferPool.Release(name.Data);
-        BufferPool.Release(level.Data);
-        BufferPool.Release(job.Data);
-        BufferPool.Release(position.Data);
-
-        return new BufferSegment(buffer, 0, totalLength);
-    }
-
-    /// <summary>
-    /// 解码玩家信息
-    /// </summary>
-    /// <param name="payload">二进制数据</param>
-    /// <param name="offset">当前读取偏移量(会被修改)</param>
-    /// <returns>解码后的玩家信息</returns>
-    /// <exception cref="Exception">如果数据不完整</exception>
-    public static PlayerInfo DecodePlayerInfo(byte[] payload, ref int offset)
-    {
-        PlayerInfo info = new PlayerInfo();
-        info.PlayerId = DecodeString(payload, ref offset);
-        info.Name = DecodeString(payload, ref offset);
-        info.Level = DecodeInt32(payload, ref offset);
-        info.Job = DecodeInt32(payload, ref offset);
-        info.Position = DecodePosition(payload, ref offset);
-        return info;
+        return new Dictionary<string, object>
+        {
+            {"characterId", DecodeInt32(payload, ref offset)},
+            {"name", DecodeString(payload, ref offset)},
+            {"level", DecodeInt32(payload, ref offset)},
+            {"role", DecodeInt32(payload, ref offset)},
+            {"skinId", DecodeInt32(payload, ref offset)},
+            {"mapId", DecodeInt32(payload, ref offset)},
+            {"x", DecodeInt32(payload, ref offset)},
+            {"y", DecodeInt32(payload, ref offset)},
+        };
     }
 }

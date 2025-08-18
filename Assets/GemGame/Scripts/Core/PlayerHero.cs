@@ -11,28 +11,24 @@ namespace Game.Core
 {
     public class PlayerHero : Hero
     {
-        [SerializeField] private HeroRole currentJob = HeroRole.Warrior;
-        private string playerId;
+        [SerializeField] private HeroRole currentRole = HeroRole.Warrior;
+        private int playerId;
         private string teamId;
         private float lastSkeletonScaleX = 1f;
         private Vector3Int? lastClickedCell;
 
-        public void Initialize(string playerId, bool isLocalPlayer, HeroRole job = HeroRole.Warrior)
+        public void Initialize(int playerId, bool isLocalPlayer, HeroRole role = HeroRole.Warrior)
         {
-            this.playerId = playerId.ToLower();
+            this.playerId = playerId;
             this.isLocalPlayer = isLocalPlayer;
-            this.currentJob = job;
-            gameObject.name = $"{playerId}";
-            Debug.Log($"PlayerHero 初始化: {gameObject.name}, playerId: {playerId}, isLocalPlayer: {isLocalPlayer}, job: {currentJob}");
+            this.currentRole = role;
+            gameObject.name = $"Player_{playerId}";
+            Debug.Log($"PlayerHero 初始化: {gameObject.name}, playerId: {playerId}, isLocalPlayer: {isLocalPlayer}, job: {currentRole}");
         }
 
         protected override void Awake()
         {
             base.Awake();
-            if (string.IsNullOrEmpty(currentMapId))
-            {
-                currentMapId = SceneManager.GetActiveScene().name;
-            }
         }
 
         protected override void Start()
@@ -48,19 +44,19 @@ namespace Game.Core
         protected override void OnDestroy()
         {
             base.OnDestroy();
-            Debug.Log($"PlayerHero {playerId} 销毁，isLocalPlayer: {isLocalPlayer}, job: {currentJob}");
+            Debug.Log($"PlayerHero {playerId} 销毁，isLocalPlayer: {isLocalPlayer}, job: {currentRole}");
         }
 
         public void SetJob(HeroRole newJob)
         {
-            if (currentJob != newJob)
+            if (currentRole != newJob)
             {
-                currentJob = newJob;
+                currentRole = newJob;
                 Debug.Log($"玩家 {playerId} 设置职业: {newJob}");
             }
         }
 
-        public HeroRole GetJob() => currentJob;
+        public HeroRole GetJob() => currentRole;
 
         public bool IsDead() => isDead;
 
@@ -137,7 +133,7 @@ namespace Game.Core
             PlayerAnimator animator = GetComponent<PlayerAnimator>();
             if (animator != null)
             {
-                animator.ChangeAnimation(animationName, job == HeroRole.Warrior ? currentJob : job);
+                animator.ChangeAnimation(animationName, job == HeroRole.Warrior ? currentRole : job);
             }
             else
             {
@@ -145,14 +141,14 @@ namespace Game.Core
             }
         }
 
-        public string GetPlayerId() => playerId;
+        public int GetPlayerId() => playerId;
         public string GetTeamId() => teamId;
 
-        public void SetPlayerId(string playerId)
+        public void SetPlayerId(int playerId)
         {
-            this.playerId = playerId.ToLower();
+            this.playerId = playerId;
             gameObject.name = $"Player_{playerId}";
-            Debug.Log($"设置玩家 ID: {playerId}, isLocalPlayer: {isLocalPlayer}, job: {currentJob}");
+            Debug.Log($"设置玩家 ID: {playerId}, isLocalPlayer: {isLocalPlayer}, job: {currentRole}");
         }
 
         public void JoinTeam(string newTeamId)

@@ -1,10 +1,12 @@
 using Game.Animation;
+using Game.Data;
 using Game.Managers;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using TMPro;
 using UnityEngine;
-using Game.Data;
+using UnityEngine.TextCore.Text;
 
 public class CharacterManager : MonoBehaviour
 {
@@ -18,34 +20,16 @@ public class CharacterManager : MonoBehaviour
     // 存储当前实例化的皮肤对象
     private List<GameObject> instantiatedSkins = new List<GameObject>();
 
+    private List<GameObject> instantiatedCharacter = new List<GameObject>();
+
     public string selectRole { get; set; }
 
-
-    // 辅助类，用于解析JSON
-    [System.Serializable]
-    private class ServerData
-    {
-        public List<Character> characters;
-        public List<Job> jobs;
-        public List<Skin> skins;
-    }
 
     // 可选：SkinData组件，用于存储皮肤元数据
     public class SkinData : MonoBehaviour
     {
         public int SkinId { get; set; }
         public string Role { get; set; }
-    }
-
-    // 角色数据结构
-    [System.Serializable]
-    public class Character
-    {
-        public string name;
-        public long id; // 角色唯一ID
-        public string job; // 职业（Warrior, Mage, Hunter, Rogue, Priest）
-        public int skinId; // 使用的皮肤ID
-        // 可根据需要添加其他角色相关字段，如等级、装备等
     }
 
     // 职业数据结构
@@ -110,12 +94,14 @@ public class CharacterManager : MonoBehaviour
     }
 
     // 存储服务器返回的数据
-    private List<Character> playerCharacters = new List<Character>(); // 玩家已创建的角色
+    private List<PlayerCharacterInfo> playerCharacters = new List<PlayerCharacterInfo>(); // 玩家已创建的角色
     private List<Job> jobData = new List<Job>(); // 职业表
     private Dictionary<string, List<Skin>> skinData = new Dictionary<string, List<Skin>>(); // 按职业分类的皮肤表
 
+    public PlayerCharacterInfo selectPLayerCharacter;
+
     // 事件，用于通知UI更新
-    public Action<List<Character>> OnCharacterListUpdated;
+    public Action<List<PlayerCharacterInfo>> OnCharacterListUpdated;
     public Action<List<Job>> OnJobListUpdated;
     public Action<string, List<Skin>> OnSkinListUpdated;
 
@@ -136,12 +122,45 @@ public class CharacterManager : MonoBehaviour
     {
         // 预加载所有皮肤预制件
         PreloadSkinPrefabs();
-        InitRoleCharacter(HeroRole.Warrior);
+    }
+
+    public GameObject InitPlayerObj(HeroRole role, int skinId)
+    {
+        // 根据职业确定皮肤ID前缀
+        int skinIdPrefix = role switch
+        {
+            HeroRole.Warrior => 1000,
+            HeroRole.Mage => 2000,
+            HeroRole.Hunter => 3000,
+            HeroRole.Rogue => 4000,
+            HeroRole.Priest => 5000,
+            _ => throw new ArgumentException($"未知职业: {selectRole}")
+        };
+
+        int actualSkinId = skinIdPrefix + skinId; // 计算实际皮肤ID，例如1001
+
+
+        string roleName = RoleToString(skinIdPrefix/1000-1);
+        GameObject skinPrefab = CharacterManager.Instance.GetSkinPrefab(roleName, actualSkinId);
+        if (skinPrefab == null)
+        {
+            Debug.LogWarning($"未找到职业 {selectRole} 的皮肤预制件，皮肤ID: {actualSkinId}");
+        }
+        return skinPrefab;
     }
 
     public void InitRoleCharacter(HeroRole role)
     {
         // 清空之前创建的角色对象
+        foreach (var skin in instantiatedCharacter)
+        {
+            if (skin != null)
+            {
+                Destroy(skin);
+            }
+        }
+        instantiatedCharacter.Clear();
+        // 清空之前创建的skins角色对象
         foreach (var skin in instantiatedSkins)
         {
             if (skin != null)
@@ -226,55 +245,148 @@ public class CharacterManager : MonoBehaviour
 
     }
 
-    
-
-    // 初始化服务器返回的数据（扩展以加载预制件）
-    public void InitializeData(string jsonData)
+    public void InitPlayerCharacterList()
     {
-        try
+        // 清空之前创建的skins角色对象
+        foreach (var skin in instantiatedSkins)
         {
-            var data = JsonUtility.FromJson<ServerData>(jsonData);
-
-            // 初始化玩家角色列表
-            playerCharacters = data.characters ?? new List<Character>();
-            OnCharacterListUpdated?.Invoke(playerCharacters);
-
-            // 初始化职业数据
-            jobData = data.jobs ?? new List<Job>();
-            OnJobListUpdated?.Invoke(jobData);
-
-            // 初始化皮肤数据，按职业分类
-            skinData.Clear();
-            foreach (var skin in data.skins)
+            if (skin != null)
             {
-                if (!skinData.ContainsKey(skin.job))
-                {
-                    skinData[skin.job] = new List<Skin>();
-                }
-                skinData[skin.job].Add(skin);
+                Destroy(skin);
             }
-
-            // 通知UI更新皮肤列表
-            foreach (var job in jobData)
-            {
-                if (skinData.ContainsKey(job.job))
-                {
-                    OnSkinListUpdated?.Invoke(job.job, skinData[job.job]);
-                }
-            }
-
-            Debug.Log("CharacterManager initialized successfully.");
         }
-        catch (Exception e)
+        instantiatedSkins.Clear();
+        // 清空之前创建的角色对象
+        foreach (var skin in instantiatedCharacter)
         {
-            Debug.LogError($"Failed to initialize CharacterManager: {e.Message}");
+            if (skin != null)
+            {
+                Destroy(skin);
+            }
+        }
+        instantiatedCharacter.Clear();
+
+        // 获取Tilemap
+        var tilemap = MapManager.Instance.GetTilemap();
+        if (tilemap == null)
+        {
+            Debug.LogError("InitPlayerCharacterList: 未找到MapManager中的Tilemap。");
+            return;
+        }
+
+        // 获取玩家角色列表
+        var characters = GetPlayerCharacters();
+        if (characters == null || characters.Count == 0)
+        {
+            Debug.LogWarning("InitPlayerCharacterList: 玩家角色列表为空。");
+            return;
+        }
+
+        // 定义起始坐标和间距
+        Vector3Int startPos = new Vector3Int(-4, 2, 0); // 起始坐标
+        int spacing = 2; // 每个角色之间的X轴间距（单位：Tilemap格子）
+
+        // 遍历角色列表并实例化
+        for (int i = 0; i < characters.Count; i++)
+        {
+            var character = characters[i];
+            
+            string roleName = RoleToString(character.Role-1); // 将Role编号转换为职业名称
+            Debug.LogWarning($"角色职业数字ID {character.Role} -- {roleName}");
+            if (string.IsNullOrEmpty(roleName))
+            {
+                Debug.LogWarning($"角色 {character.CharacterId} 的职业编号 {character.Role} 无效。");
+                continue;
+            }
+
+            // 根据职业确定皮肤ID前缀
+            int skinIdPrefix = roleName switch
+            {
+                "Warrior" => 1000,
+                "Mage" => 2000,
+                "Hunter" => 3000,
+                "Rogue" => 4000,
+                "Priest" => 5000,
+                _ => throw new ArgumentException($"未知职业: {selectRole}")
+            };
+
+            // 获取皮肤预制件
+            GameObject skinPrefab = GetSkinPrefab(roleName, skinIdPrefix + character.SkinId);
+            if (skinPrefab == null)
+            {
+                Debug.LogWarning($"未找到职业 {roleName} 的皮肤预制件，皮肤ID: {character.SkinId}");
+                continue;
+            }
+
+            // 计算当前角色的Tilemap格子坐标（向右排列）
+            Vector3Int tilePos = new Vector3Int(startPos.x + i * spacing, startPos.y, startPos.z);
+
+            // 将Tilemap格子坐标转换为世界坐标
+            Vector3 worldPos = tilemap.GetCellCenterWorld(tilePos);
+            worldPos += new Vector3(0, spriteHeightOffset, 0); // 应用高度偏移
+
+            // 实例化皮肤预制件
+            GameObject playerObj = Instantiate(skinPrefab, worldPos, Quaternion.identity);
+            playerObj.name = $"{roleName}_Character_{character.CharacterId}"; // 设置唯一名称
+
+            // 添加到实例化列表
+            instantiatedCharacter.Add(playerObj);
+
+            // 添加SkinData组件存储元数据
+            var skinData = playerObj.AddComponent<SkinData>();
+            skinData.SkinId = character.SkinId;
+            skinData.Role = roleName;
+
+            // 播放默认动画（如果有Animator组件）
+            var animator = playerObj.GetComponent<Animator>();
+            if (animator != null)
+            {
+                animator.Play("Idle"); // 替换为你的动画状态名称
+            }
+
+            Debug.Log($"实例化角色: ID={character.CharacterId}, Name={character.Name}, Role={roleName}, SkinId={character.SkinId}, Position={worldPos}");
         }
     }
 
+    public string RoleToString(int role)
+    {
+        return role switch
+        {
+            (int)HeroRole.Warrior => "Warrior",
+            (int)HeroRole.Mage => "Mage",
+            (int)HeroRole.Hunter => "Hunter",
+            (int)HeroRole.Rogue => "Rogue",
+            (int)HeroRole.Priest => "Priest",
+            _ => string.Empty // 无效职业返回空字符串
+        };
+    }
+
+
+    public void AddCharacterList(PlayerCharacterInfo PlayerCharacterInfo)
+    {
+        playerCharacters.Add(PlayerCharacterInfo);
+    }
+
     // 获取玩家已创建的角色列表
-    public List<Character> GetPlayerCharacters()
+    public List<PlayerCharacterInfo> GetPlayerCharacters()
     {
         return playerCharacters;
+    }
+    
+    public void CleanPlayerCharacters()
+    {
+        playerCharacters.Clear();
+    }
+
+    public void SetSelectCharacter(int index)
+    {
+        if(playerCharacters.Count >= (index+1))
+        {
+            UIManager.Instance.ShowStartGameButton(true);
+            selectPLayerCharacter = playerCharacters[index];
+            Debug.LogWarning($"当前选择的角色：{selectPLayerCharacter.CharacterId} --{selectPLayerCharacter.Name} -- {selectPLayerCharacter.Level} -- {selectPLayerCharacter.Role} -- {selectPLayerCharacter.SkinId} -- {selectPLayerCharacter.MapId} -- {selectPLayerCharacter.X} -- {selectPLayerCharacter.Y}");
+        }
+        
     }
 
     // 获取职业列表
@@ -309,42 +421,25 @@ public class CharacterManager : MonoBehaviour
 
         // 模拟发送请求到服务器创建角色
         // 这里假设服务器返回新创建的角色数据
-        StartCoroutine(SendCreateCharacterRequest(job, skinId, callback));
+       
     }
 
-    // 模拟服务器请求（实际项目中替换为真实的网络请求）
-    private System.Collections.IEnumerator SendCreateCharacterRequest(string job, int skinId, Action<bool, string> callback)
-    {
-        // 模拟网络延迟
-        yield return new WaitForSeconds(1f);
-
-        // 模拟服务器创建角色成功
-        Character newCharacter = new Character
-        {
-            id = playerCharacters.Count + 1, // 模拟自增ID
-            job = job,
-            skinId = skinId
-        };
-
-        playerCharacters.Add(newCharacter);
-        OnCharacterListUpdated?.Invoke(playerCharacters);
-        callback?.Invoke(true, "Character created successfully!");
-    }
+ 
 
     // 选择角色进入游戏
-    public void SelectCharacter(long characterId, Action<bool, Character> callback)
+    public void SelectCharacter(long characterId, Action<bool, PlayerCharacterInfo> callback)
     {
-        Character selected = playerCharacters.Find(c => c.id == characterId);
-        if (selected == null)
-        {
-            callback?.Invoke(false, null);
-            Debug.LogError($"Character with ID {characterId} not found.");
-            return;
-        }
+        //PlayerCharacterInfo selected = playerCharacters.Find(c => c.id == characterId);
+        //if (selected == null)
+        //{
+        //    callback?.Invoke(false, null);
+        //    Debug.LogError($"Character with ID {characterId} not found.");
+        //    return;
+        //}
 
-        // 通知游戏进入角色选择状态，加载角色数据
-        callback?.Invoke(true, selected);
-        Debug.Log($"Selected character: {selected.job} with skin ID: {selected.skinId}");
+        //// 通知游戏进入角色选择状态，加载角色数据
+        //callback?.Invoke(true, selected);
+        //Debug.Log($"Selected character: {selected.Role} with skin ID: {selected.SkinId}");
     }
 
     // 获取皮肤的Sprite（用于UI展示）
@@ -405,6 +500,7 @@ public class CharacterManager : MonoBehaviour
     // 新增：获取指定职业和皮肤ID的预制件
     public GameObject GetSkinPrefab(string job, int skinId)
     {
+        Debug.Log($"GetSkinPrefab: {job} -- {skinId}");
         if (skinPrefabs.ContainsKey(job) && skinPrefabs[job].ContainsKey(skinId))
         {
             return skinPrefabs[job][skinId];

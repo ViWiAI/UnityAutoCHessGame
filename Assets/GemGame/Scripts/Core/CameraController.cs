@@ -1,146 +1,182 @@
 using UnityEngine;
 using Cinemachine;
-using Game.Managers;
+using UnityEngine.SceneManagement;
 
+[RequireComponent(typeof(CinemachineVirtualCamera))]
 public class CameraZoomController : MonoBehaviour
 {
-    [SerializeField] private float zoomSpeed = 100f; // 缩放速度
-    [SerializeField] private float minOrthoSize = 4f; // 最小视野大小（放大）
-    [SerializeField] private float maxOrthoSize = 6f; // 最大视野大小（缩小）
+    public static CameraZoomController Instance { get; private set; }
 
-    [Header("Camera Shake Settings")]
-    [SerializeField] private Transform shakeCenter; // 晃动的中心点（可以是 Tilemap 中心）
-    [SerializeField] private float shakeAmplitude = 0.5f; // 晃动幅度（单位：Unity 单位）
-    [SerializeField] private float shakeFrequency = 1f; // 晃动频率（每秒周期数）
-    [SerializeField] private Vector2 shakeDirection = new Vector2(1f, 1f); // 晃动方向（X/Y 轴）
+    [Header("Zoom Settings")]
+    [SerializeField] private float zoomSpeed = 100f;
+    [SerializeField] private float minOrthoSize = 4f;
+    [SerializeField] private float maxOrthoSize = 6f;
+
+    [Header("Login Screen Shake")]
+    [SerializeField] private float shakeAmplitude = 0.5f;
+    [SerializeField] private float shakeFrequency = 1f;
+    [SerializeField] private Vector2 shakeDirection = new Vector2(1f, 1f);
 
     private CinemachineVirtualCamera virtualCamera;
-    private Vector3 originalFollowOffset; // 原始 Follow Offset，用于恢复
-    private float shakeTimer; // 计时器，用于计算晃动
+    private Transform defaultShakeTarget;
+    private CinemachineTransposer transposer;
+    private Vector3 originalFollowOffset;
+    public bool isInGameScene = false;
 
     private void Awake()
+    {
+        if (Instance == null)
+        {
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+            InitializeCamera();
+            SceneManager.sceneLoaded += OnSceneLoaded;
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this)
+        {
+            SceneManager.sceneLoaded -= OnSceneLoaded;
+            Instance = null;
+        }
+    }
+
+    private void InitializeCamera()
     {
         virtualCamera = GetComponent<CinemachineVirtualCamera>();
         if (virtualCamera == null)
         {
-            Debug.LogError("CinemachineVirtualCamera 组件未找到！");
+            Debug.LogError("CinemachineVirtualCamera component not found!");
+            return;
         }
 
-        // 保存原始 Follow Offset（如果使用 Framing Transposer 或 Transposer）
-        var transposer = virtualCamera.GetCinemachineComponent<CinemachineFramingTransposer>();
+        transposer = virtualCamera.GetCinemachineComponent<CinemachineTransposer>();
         if (transposer != null)
         {
-            originalFollowOffset = transposer.m_TrackedObjectOffset;
+            originalFollowOffset = transposer.m_FollowOffset;
+        }
+
+        // 创建默认的登录界面抖动目标
+        //defaultShakeTarget = new GameObject("CameraShakeTarget").transform;
+        //defaultShakeTarget.position = Vector3.zero;
+
+        //virtualCamera.Follow = defaultShakeTarget;
+        Debug.Log("Camera initialized for login screen");
+    }
+
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        // Detect if we're entering the game scene
+        if (scene.name == "NoviceMap") // Adjust to your game scene name
+        {
+            isInGameScene = true;
+            Debug.Log("Entered game scene, ready to follow player");
         }
         else
         {
-            var basicTransposer = virtualCamera.GetCinemachineComponent<CinemachineTransposer>();
-            if (basicTransposer != null)
-            {
-                originalFollowOffset = basicTransposer.m_FollowOffset;
-            }
-        }
-
-        // 如果未指定 shakeCenter，尝试使用 Follow 目标或默认场景原点
-        if (shakeCenter == null && virtualCamera.Follow != null)
-        {
-            shakeCenter = virtualCamera.Follow;
-        }
-        else if (shakeCenter == null)
-        {
-            Debug.LogWarning("未设置 shakeCenter，将使用场景原点 (0, 0, 0)");
-            GameObject center = new GameObject("ShakeCenter");
-            shakeCenter = center.transform;
-            shakeCenter.position = Vector3.zero;
+            isInGameScene = false;
+            ResetToLoginMode();
         }
     }
 
     private void Update()
     {
-        if (GameManager.Instance.GetLoginStatus())
+        if (!isInGameScene)
         {
-            // 玩家已登录：处理缩放
-            HandleZoom();
+            HandleLoginShake();
         }
-        else
+        HandleZoom();
+    }
+
+    public void SetFollowTarget(Transform target)
+    {
+        if (virtualCamera == null)
         {
-            // 玩家未登录：处理相机晃动
-            HandleCameraShake();
+            Debug.LogError("Virtual camera is not initialized!");
+            return;
         }
+
+        if (!isInGameScene)
+        {
+            Debug.LogWarning("Not in game scene, cannot set follow target");
+            return;
+        }
+
+        if (target == null)
+        {
+            Debug.LogWarning("Attempted to set null follow target");
+            return;
+        }
+
+        virtualCamera.Follow = target;
+
+        // 确保transposer存在
+        if (transposer == null)
+        {
+            transposer = virtualCamera.GetCinemachineComponent<CinemachineTransposer>();
+            if (transposer == null)
+            {
+                Debug.LogError("Failed to get CinemachineTransposer component!");
+                return;
+            }
+        }
+
+        transposer.m_FollowOffset = new Vector3(0, 0, -10);
+        transposer.m_XDamping = 0.5f;
+        transposer.m_YDamping = 0.5f;
+        transposer.m_ZDamping = 0f;
+
+        Debug.Log($"Camera now following: {target.name} at position {target.position}", target);
+        Debug.Log($"Camera status: {GetCameraStatus()}");
+    }
+
+    public void ResetToLoginMode()
+    {
+        isInGameScene = false;
+        virtualCamera.Follow = defaultShakeTarget;
+
+        if (transposer != null)
+        {
+            transposer.m_FollowOffset = originalFollowOffset;
+        }
+
+        Debug.Log("Camera reset to login screen mode");
+    }
+
+    private void HandleLoginShake()
+    {
+        if (defaultShakeTarget == null) return;
+
+        float offsetX = Mathf.Sin(Time.time * shakeFrequency) * shakeAmplitude * shakeDirection.x;
+        float offsetY = Mathf.Cos(Time.time * shakeFrequency) * shakeAmplitude * shakeDirection.y;
+
+        defaultShakeTarget.localPosition = new Vector3(offsetX, offsetY, 0);
     }
 
     private void HandleZoom()
     {
-        // 获取鼠标滚轮输入
+        if (virtualCamera == null) return;
+
         float scrollInput = Input.GetAxis("Mouse ScrollWheel");
-        if (scrollInput != 0f)
+        if (Mathf.Abs(scrollInput) > 0.01f)
         {
-            // 计算新的 Orthographic Size
-            float currentOrthoSize = virtualCamera.m_Lens.OrthographicSize;
-            float newOrthoSize = currentOrthoSize - scrollInput * zoomSpeed * Time.deltaTime;
-
-            // 限制缩放范围
-            newOrthoSize = Mathf.Clamp(newOrthoSize, minOrthoSize, maxOrthoSize);
-
-            // 应用新的 Orthographic Size
-            virtualCamera.m_Lens.OrthographicSize = newOrthoSize;
-
-            Debug.Log($"相机缩放: OrthographicSize = {newOrthoSize}");
-        }
-
-        // 停止晃动，恢复原始 Follow Offset
-        ResetCameraOffset();
-    }
-
-    private void HandleCameraShake()
-    {
-        // 增加计时器
-        shakeTimer += Time.deltaTime * shakeFrequency;
-
-        // 使用正弦函数计算晃动偏移
-        float offsetX = Mathf.Sin(shakeTimer) * shakeAmplitude * shakeDirection.x;
-        float offsetY = Mathf.Cos(shakeTimer) * shakeAmplitude * shakeDirection.y;
-
-        // 应用偏移到 Follow Offset
-        var transposer = virtualCamera.GetCinemachineComponent<CinemachineFramingTransposer>();
-        if (transposer != null)
-        {
-            transposer.m_TrackedObjectOffset = originalFollowOffset + new Vector3(offsetX, offsetY, 0f);
-        }
-        else
-        {
-            var basicTransposer = virtualCamera.GetCinemachineComponent<CinemachineTransposer>();
-            if (basicTransposer != null)
-            {
-                basicTransposer.m_FollowOffset = originalFollowOffset + new Vector3(offsetX, offsetY, 0f);
-            }
-        }
-
-        // 确保相机始终看向 shakeCenter
-        virtualCamera.Follow = shakeCenter;
-    }
-
-    private void ResetCameraOffset()
-    {
-        // 恢复原始 Follow Offset
-        var transposer = virtualCamera.GetCinemachineComponent<CinemachineFramingTransposer>();
-        if (transposer != null)
-        {
-            transposer.m_TrackedObjectOffset = originalFollowOffset;
-        }
-        else
-        {
-            var basicTransposer = virtualCamera.GetCinemachineComponent<CinemachineTransposer>();
-            if (basicTransposer != null)
-            {
-                basicTransposer.m_FollowOffset = originalFollowOffset;
-            }
+            float newSize = virtualCamera.m_Lens.OrthographicSize - scrollInput * zoomSpeed * Time.deltaTime;
+            virtualCamera.m_Lens.OrthographicSize = Mathf.Clamp(newSize, minOrthoSize, maxOrthoSize);
         }
     }
 
-    // 可选：公开方法以动态设置晃动中心
-    public void SetShakeCenter(Transform newCenter)
+    // Debug method to check camera status
+    public string GetCameraStatus()
     {
-        shakeCenter = newCenter;
+        return $"Camera Status:\n" +
+               $"Following: {(virtualCamera.Follow != null ? virtualCamera.Follow.name : "null")}\n" +
+               $"In Game Scene: {isInGameScene}\n" +
+               $"Ortho Size: {virtualCamera.m_Lens.OrthographicSize}";
     }
 }

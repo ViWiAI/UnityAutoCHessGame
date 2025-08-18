@@ -5,7 +5,6 @@ using PimDeWitte.UnityMainThreadDispatcher;
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
 namespace Game.Network
@@ -17,7 +16,10 @@ namespace Game.Network
         private WebSocket ws;
         private bool isConnecting;
         private Queue<BufferSegment> messageQueue = new Queue<BufferSegment>();
-        private const float RECONNECT_INTERVAL = 10f; // 重连间隔，10秒
+        private const float RECONNECT_INTERVAL = 5f; // 重连间隔缩短为5秒
+        private const float CONNECTION_CHECK_INTERVAL = 2f; // 连接检查间隔
+        private DateTime lastConnectionAttemptTime = DateTime.MinValue;
+        private bool isManualDisconnect;
 
         public Action<MessageType, byte[]> OnMessageReceived;
 
@@ -32,13 +34,11 @@ namespace Game.Network
             TeamJoin = 6,
             PvPMatch = 7,
             CreateCharacter = 8,
+            CharacterList = 9,
             Error = 255
         }
 
-        public bool IsConnected()
-        {
-            return ws != null && ws.IsOpen;
-        }
+        public bool IsConnected => ws != null && ws.IsOpen;
 
         private void Awake()
         {
@@ -55,72 +55,96 @@ namespace Game.Network
 
         private void Start()
         {
-            // 确保 UnityMainThreadDispatcher 已初始化
             if (UnityMainThreadDispatcher.Instance() == null)
             {
                 Debug.LogError("UnityMainThreadDispatcher 未初始化");
             }
-            StartCoroutine(Connect());
+            StartCoroutine(ConnectionMonitor());
+        }
+
+        private IEnumerator ConnectionMonitor()
+        {
+            while (true)
+            {
+                yield return new WaitForSeconds(CONNECTION_CHECK_INTERVAL);
+
+                if (isManualDisconnect) continue;
+
+                // 检查是否需要连接或重连
+                if (!IsConnected && !isConnecting &&
+                    (DateTime.Now - lastConnectionAttemptTime).TotalSeconds >= RECONNECT_INTERVAL)
+                {
+                    StartCoroutine(Connect());
+                }
+            }
         }
 
         private IEnumerator Connect()
         {
-            while (true)
+            if (isConnecting) yield break;
+
+            isConnecting = true;
+            lastConnectionAttemptTime = DateTime.Now;
+
+            // 清理旧连接
+            if (ws != null)
             {
-                // 检查 WebSocket 是否需要连接或重连
-                if (ws == null || ws.State == WebSocketStates.Closed || ws.State == WebSocketStates.Closing)
-                {
-                    if (ws != null)
-                    {
-                        Debug.Log($"WebSocket 状态: {ws.State}, 准备重连...");
-                        ws.Close(); // 确保旧连接关闭
-                        ws = null;
-                        // 等待重连间隔
-                        Debug.Log($"等待 {RECONNECT_INTERVAL} 秒后重连...");
-                        yield return new WaitForSeconds(RECONNECT_INTERVAL);
-                    }
-
-                    isConnecting = true;
-                    ws = new WebSocket(new Uri("ws://localhost:7272"));
-
-                    // 注册回调
-                    ws.OnOpen += OnWebSocketOpen;
-                    ws.OnBinary += OnWebSocketBinary;
-                    ws.OnClosed += OnWebSocketClosed;
-                    // 移除 OnMessage，避免处理文本消息
-                    // ws.OnMessage += OnMessageReceivedJson;
-
-                    Debug.Log("尝试连接 WebSocket...");
-                    ws.Open();
-
-                    // 等待连接结果
-                    while (isConnecting && ws.State == WebSocketStates.Connecting)
-                    {
-                        yield return null;
-                    }
-                }
-                // 每秒检查一次连接状态，避免协程过于频繁
-                yield return new WaitForSeconds(5f);
+                ws.OnOpen -= OnWebSocketOpen;
+                ws.OnBinary -= OnWebSocketBinary;
+                ws.OnClosed -= OnWebSocketClosed;
+                ws.Close();
+                ws = null;
             }
+
+            Debug.Log("正在连接WebSocket服务器...");
+            ws = new WebSocket(new Uri("ws://localhost:7272"));
+
+            // 注册回调
+            ws.OnOpen += OnWebSocketOpen;
+            ws.OnBinary += OnWebSocketBinary;
+            ws.OnClosed += OnWebSocketClosed;
+
+            // 开始连接
+            ws.Open();
+
+            // 等待连接完成或超时(10秒)
+            float timeout = 10f;
+            float elapsed = 0f;
+            while (isConnecting && elapsed < timeout)
+            {
+                elapsed += Time.deltaTime;
+                yield return null;
+            }
+
+            if (elapsed >= timeout)
+            {
+                Debug.LogWarning("WebSocket连接超时");
+                if (ws != null)
+                {
+                    ws.Close();
+                    ws = null;
+                }
+            }
+
+            isConnecting = false;
         }
 
         private void OnWebSocketOpen(WebSocket webSocket)
         {
-            Debug.Log("WebSocket 连接成功");
+            Debug.Log("WebSocket连接成功");
             isConnecting = false;
+            isManualDisconnect = false;
 
-            // 处理消息队列
+            // 发送队列中的消息
             while (messageQueue.Count > 0)
             {
-                Debug.Log("处理消息队列");
-                BufferSegment message = messageQueue.Dequeue();
-                ws.SendAsBinary(message);
+                var message = messageQueue.Dequeue();
+                SendInternal(message);
             }
         }
 
         private void OnWebSocketBinary(WebSocket webSocket, BufferSegment buffer)
         {
-            Debug.Log($"OnWebSocketBinary: 收到消息，长度={buffer.Count}, 数据={BitConverter.ToString(buffer.Data, buffer.Offset, buffer.Count)}");
             UnityMainThreadDispatcher.Instance().Enqueue(() =>
             {
                 try
@@ -135,72 +159,103 @@ namespace Game.Network
                     Array.Copy(buffer.Data, buffer.Offset, data, 0, buffer.Count);
 
                     MessageType msgType = (MessageType)data[0];
-                    Debug.Log($"解析消息: msgType={msgType}");
-                    byte[] lengthBytes = new byte[4];
-                    Array.Copy(data, 1, lengthBytes, 0, 4);
+                    int payloadLength = BitConverter.ToInt32(data, 1);
                     if (BitConverter.IsLittleEndian)
                     {
-                        lengthBytes = lengthBytes.Reverse().ToArray();
+                        payloadLength = System.Net.IPAddress.NetworkToHostOrder(payloadLength);
                     }
-                    int payloadLength = BitConverter.ToInt32(lengthBytes, 0);
+
                     if (payloadLength > data.Length - 5)
                     {
-                        Debug.LogWarning($"Payload 长度不匹配: 期望 {payloadLength}, 实际 {data.Length - 5}");
+                        Debug.LogWarning($"Payload长度不匹配: 期望{payloadLength}, 实际{data.Length - 5}");
                         return;
                     }
+
                     byte[] payload = new byte[payloadLength];
                     Array.Copy(data, 5, payload, 0, payloadLength);
-                    Debug.Log($"消息详情: payloadLength={payloadLength}, payload={BitConverter.ToString(payload)}");
                     OnMessageReceived?.Invoke(msgType, payload);
                 }
                 catch (Exception e)
                 {
-                    Debug.LogError($"二进制消息解析失败: {e.Message}, 数据: {BitConverter.ToString(buffer.Data, buffer.Offset, buffer.Count)}");
+                    Debug.LogError($"二进制消息解析失败: {e.Message}");
                 }
             });
         }
 
         private void OnWebSocketClosed(WebSocket webSocket, WebSocketStatusCodes code, string message)
         {
-            Debug.Log($"WebSocket 关闭: {message} (Code: {code})");
+            Debug.Log($"WebSocket关闭: {message} (Code: {code})");
             isConnecting = false;
-            ws = null; // 确保 ws 重置，触发重连
-            if (code != WebSocketStatusCodes.NormalClosure)
+
+            // 清理回调
+            if (ws != null)
             {
-                Debug.LogWarning($"WebSocket 异常关闭: Code={code}, Message={message}");
+                ws.OnOpen -= OnWebSocketOpen;
+                ws.OnBinary -= OnWebSocketBinary;
+                ws.OnClosed -= OnWebSocketClosed;
+                ws = null;
+            }
+
+            if (!isManualDisconnect && code != WebSocketStatusCodes.NormalClosure)
+            {
+                Debug.LogWarning($"WebSocket异常关闭，将尝试重连: Code={code}, Message={message}");
             }
         }
 
         public void Send(MessageType msgType, BufferSegment message)
         {
-            if (ws != null && ws.IsOpen)
+            if (IsConnected)
             {
-                ws.SendAsBinary(message);
-                Debug.Log($"发送消息: msgType={msgType}, 长度={message.Count}");
+                SendInternal(message);
             }
             else
             {
                 messageQueue.Enqueue(message);
-                Debug.Log($"WebSocket 未连接，消息已加入队列: msgType={msgType}");
+                Debug.Log($"WebSocket未连接，消息已加入队列: msgType={msgType}");
             }
         }
 
-        private void Update()
+        private void SendInternal(BufferSegment message)
         {
-            // 定期日志连接状态（可选）
-            //if (ws != null)
-            //{
-            //    Debug.Log($"WebSocket 状态: {ws.State}, 未发送数据量: {ws.BufferedAmount}");
-            //}
+            try
+            {
+                ws.SendAsBinary(message);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"发送消息失败: {e.Message}");
+                messageQueue.Enqueue(message); // 重新加入队列
+                if (ws != null)
+                {
+                    ws.Close();
+                    ws = null;
+                }
+            }
         }
 
-        private void OnDestroy()
+        public void Disconnect()
         {
+            isManualDisconnect = true;
             if (ws != null)
             {
                 ws.Close();
                 ws = null;
             }
+            messageQueue.Clear();
+        }
+
+        public void Reconnect()
+        {
+            isManualDisconnect = false;
+            if (!IsConnected && !isConnecting)
+            {
+                StartCoroutine(Connect());
+            }
+        }
+
+        private void OnDestroy()
+        {
+            Disconnect();
         }
     }
 }

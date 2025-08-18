@@ -1,6 +1,4 @@
-using Game.Combat;
 using Game.Core;
-using Game.Network;
 using Newtonsoft.Json;
 using System.Collections;
 using System.Collections.Generic;
@@ -35,13 +33,22 @@ namespace Game.Managers
             Volcano      // 火山
         }
 
-        [SerializeField] protected Tilemap tilemap; // 主地图
-        [SerializeField] protected Tilemap collisionTilemap; // 碰撞地图
-        [SerializeField] private string mapId; // 地图 ID
+        [SerializeField] protected Tilemap tilemap; // 主地图（Land）
+        [SerializeField] protected Tilemap collisionTilemap; // 碰撞地图（Obstacle）
+        [SerializeField] private int mapId; // 地图 ID
         [SerializeField] private MapType mapType; // 地图类型
         [SerializeField] private MapStyle mapStyle; // 地图风格
-        private string roomId; // 当前房间 ID（用于战斗、PVP等）
+        private int roomId; // 当前房间 ID（用于战斗、PVP等）
         private MapData mapData; // 地图数据
+
+        // MapId (int) 到场景名称的映射
+        private static readonly Dictionary<int, string> MapIdToSceneName = new Dictionary<int, string>
+        {
+            { 1, "NoviceMap" },    // 服务器 MapId 1 对应 WorldMap 场景
+            { 2, "WorldMapGreen" },  // 服务器 MapId 2 对应 DungeonMap 场景
+            { 3, "SiegeMap" },    // 服务器 MapId 3 对应 SiegeMap 场景
+            // 添加更多映射
+        };
 
         // 事件：当怪物、宝物等刷新时触发
         public delegate void SpawnHandler(Vector3Int cell, string spawnType, string itemId);
@@ -53,7 +60,7 @@ namespace Game.Managers
 
         private void Awake()
         {
-            // 单例模式：确保只有一个 MapManager 实例
+            // 单例模式
             if (Instance != null && Instance != this)
             {
                 Debug.LogWarning($"MapManager for mapId {mapId} already exists! Destroying this instance.");
@@ -61,36 +68,17 @@ namespace Game.Managers
                 return;
             }
             Instance = this;
-            DontDestroyOnLoad(gameObject); // 可选：根据需求决定是否跨场景保留
+            DontDestroyOnLoad(gameObject);
 
             // 设置默认 mapId
-            if (string.IsNullOrEmpty(mapId))
-            {
-                mapId = SceneManager.GetActiveScene().name;
-                Debug.LogWarning($"MapManager {name}: mapId 未设置，使用场景名称: {mapId}");
-            }
+            //if (string.IsNullOrEmpty(mapId))
+            //{
+            //    mapId = SceneManager.GetActiveScene().name;
+            //    Debug.LogWarning($"MapManager {name}: mapId 未设置，使用场景名称: {mapId}");
+            //}
 
-            // 检查 Tilemap 配置
-            if (tilemap == null)
-            {
-                Debug.LogError($"MapManager {name} (mapId: {mapId}): 未分配 Tilemap！请在 Inspector 中设置。");
-                return;
-            }
-            if (collisionTilemap == null)
-            {
-                Debug.LogWarning($"MapManager {name} (mapId: {mapId}): 未分配 collisionTilemap，可能没有碰撞层。");
-            }
-
-            // 初始化 MapData
-            mapData = new MapData
-            {
-                tilemap = tilemap,
-                collisionTilemap = collisionTilemap,
-                tileContents = new Dictionary<Vector3Int, TileContent>()
-            };
-
-            // 根据地图风格应用环境效果
-            ApplyMapStyleEffects();
+            // 初始化 Tilemap
+            UpdateTilemaps();
 
             Debug.Log($"MapManager initialized for mapId: {mapId}, Type: {mapType}, Style: {mapStyle}");
             OnMapLoaded?.Invoke(this);
@@ -98,38 +86,78 @@ namespace Game.Managers
 
         private void OnDestroy()
         {
-
-        
-            // 如果当前实例是单例，清除 Instance
             if (Instance == this)
             {
                 Instance = null;
             }
         }
 
-        private void Start()
-        {
-           
-            // 更新所有 PlayerHero
-         //   UpdatePlayerHeroes();
-        }
-
         private void OnValidate()
         {
-            // 在 Inspector 中编辑时检查配置
+            // Inspector 中检查配置
             if (tilemap == null)
             {
-                Debug.LogWarning($"MapManager {name}: Tilemap 未分配，请在 Inspector 中设置。");
+                Debug.LogWarning($"MapManager {name}: Tilemap (Land) 未分配，请确保场景中有名为 'Land' 的 Tilemap。");
             }
             if (collisionTilemap == null)
             {
-                Debug.LogWarning($"MapManager {name}: collisionTilemap 未分配，可能没有碰撞层。");
+                Debug.LogWarning($"MapManager {name}: collisionTilemap (Obstacle) 未分配，请确保场景中有名为 'Obstacle' 的 Tilemap。");
             }
-            if (string.IsNullOrEmpty(mapId))
+            //if (string.IsNullOrEmpty(mapId))
+            //{
+            //    mapId = SceneManager.GetActiveScene().name;
+            //    Debug.LogWarning($"MapManager {name}: mapId 未设置，自动使用场景名称: {mapId}");
+            //}
+        }
+
+        // 动态更新 Tilemap 和 collisionTilemap
+        public void UpdateTilemaps()
+        {
+            // 查找场景中的所有 Tilemap
+            Tilemap[] tilemaps = FindObjectsOfType<Tilemap>();
+            tilemap = null;
+            collisionTilemap = null;
+
+            foreach (var tm in tilemaps)
             {
-                mapId = SceneManager.GetActiveScene().name;
-                Debug.LogWarning($"MapManager {name}: mapId 未设置，自动使用场景名称: {mapId}");
+                // 查找 Land Tilemap（主地图）
+                if (tm.gameObject.name == "Land" || tm.gameObject.name.Contains("Land"))
+                {
+                    tilemap = tm;
+                }
+                // 查找 Obstacle Tilemap（碰撞/障碍物地图）
+                else if (tm.gameObject.name == "Obstacle" || tm.gameObject.name.Contains("Obstacle"))
+                {
+                    collisionTilemap = tm;
+                }
             }
+
+            // 检查 Tilemap 配置
+            if (tilemap == null)
+            {
+                Debug.LogError($"MapManager {name} (mapId: {mapId}): 未找到 Land Tilemap！请确保场景中有名为 'Land' 的 Tilemap。");
+            }
+            else
+            {
+                Debug.Log($"MapManager {name} (mapId: {mapId}): 成功加载 Land Tilemap。");
+            }
+
+            if (collisionTilemap == null)
+            {
+                Debug.LogWarning($"MapManager {name} (mapId: {mapId}): 未找到 Obstacle Tilemap，可能没有碰撞层。");
+            }
+            else
+            {
+                Debug.Log($"MapManager {name} (mapId: {mapId}): 成功加载 Obstacle Tilemap。");
+            }
+
+            // 更新 MapData
+            mapData = new MapData
+            {
+                tilemap = tilemap,
+                collisionTilemap = collisionTilemap,
+                tileContents = new Dictionary<Vector3Int, TileContent>()
+            };
         }
 
         private void ApplyMapStyleEffects()
@@ -162,110 +190,58 @@ namespace Game.Managers
             }
         }
 
-        public void SwitchMap(string newMapId, string newRoomId = null)
+        // 将服务器的 MapId (int) 转换为场景名称
+        private string GetSceneNameFromMapId(int mapId)
         {
+            if (MapIdToSceneName.TryGetValue(mapId, out string sceneName))
+            {
+                return sceneName;
+            }
+            Debug.LogWarning($"未定义的服务器 MapId: {mapId}，默认使用 WorldMap");
+            return "WorldMap"; // 默认场景
+        }
+
+        public void SwitchMap(int newMapId, int newRoomId = 1)
+        {
+            string sceneName = GetSceneNameFromMapId(newMapId);
             if (newMapId == mapId)
             {
-                roomId = newRoomId;
-             //   UpdatePlayerHeroes();
                 Debug.Log($"MapManager: 已在地图 {mapId}，更新 roomId: {newRoomId}");
                 return;
             }
 
-            SceneManager.LoadSceneAsync(newMapId, LoadSceneMode.Single).completed += (op) =>
+            // 异步加载新场景
+            SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Single).completed += (op) =>
             {
-                Debug.Log($"MapManager: 切换到新地图: {newMapId}, 房间: {newRoomId}");
+                mapId = newMapId;
+                roomId = newRoomId;
+                UpdateTilemaps(); // 更新 Tilemap
+                InputManager.Instance.GetMouseSprite();
+                // 确保场景完全加载后再初始化玩家
+                StartCoroutine(DelayedPlayerInitialization());
             };
         }
 
-        //private void UpdatePlayerHeroes()
-        //{
-        //    var heroes = FindObjectsOfType<PlayerHero>();
-        //    foreach (var hero in heroes)
-        //    {
-        //        hero.SetCurrentMapId(mapId);
-        //        Debug.Log($"Updated PlayerHero {hero.gameObject.name} to mapId: {mapId}, Type: {mapType}, Style: {mapStyle}");
-        //    }
+        private IEnumerator DelayedPlayerInitialization()
+        {
+            // 等待一帧确保所有组件初始化完成
+            yield return null;
 
-        //    bool isBattleMap = mapType == MapType.DungeonMap || mapType == MapType.PVPMap || mapType == MapType.SiegeMap;
-        //    // UIManager.Instance.ShowBattleUI(isBattleMap);
-        //}
+            Debug.Log($"MapManager: 切换到新地图: {mapId}");
+            OnMapLoaded?.Invoke(this);
+
+            // 初始化本地玩家
+            PlayerManager.Instance.InitializeLocalPlayer(CharacterManager.Instance.selectPLayerCharacter);
+        }
 
         public Tilemap GetTilemap() => mapData.tilemap;
         public Tilemap GetCollisionTilemap() => mapData.collisionTilemap;
-        public string GetMapId() => mapId;
-        public string GetRoomId() => roomId;
+        public int GetMapId() => mapId;
+        public int GetRoomId() => roomId;
         public MapType GetMapType() => mapType;
         public MapStyle GetMapStyle() => mapStyle;
 
-        private void HandleServerMessage(Dictionary<string, object> data)
-        {
-            if (data.ContainsKey("map_id") && data["map_id"].ToString() != mapId)
-            {
-                return;
-            }
-
-            string type = data["type"].ToString();
-            switch (type)
-            {
-                case "spawn":
-                    var cellData = JsonConvert.DeserializeObject<Dictionary<string, int>>(JsonConvert.SerializeObject(data["cell"]));
-                    Vector3Int cell = new Vector3Int(cellData["x"], cellData["y"], cellData["z"]);
-                    string spawnType = data["spawn_type"].ToString();
-                    string itemId = data["item_id"].ToString();
-                    if (!mapData.tileContents.ContainsKey(cell))
-                    {
-                        mapData.tileContents.Add(cell, new TileContent());
-                    }
-                    var content = mapData.tileContents[cell];
-                    if (spawnType == "Monster")
-                    {
-                        if (mapType == MapType.DungeonMap || mapType == MapType.WorldMap)
-                        {
-                            content.hasMonster = true;
-                            content.monsterId = itemId;
-                        }
-                    }
-                    else if (spawnType == "Treasure")
-                    {
-                        content.hasTreasure = true;
-                        content.treasureId = itemId;
-                    }
-                    else if (spawnType == "Castle")
-                    {
-                        if (mapType == MapType.SiegeMap)
-                        {
-                            content.hasCastle = true;
-                            content.castleId = itemId;
-                        }
-                    }
-                    Debug.Log($"地图 {mapId} 在 {cell} 生成了 {spawnType}: {itemId}");
-                    OnSpawn?.Invoke(cell, spawnType, itemId);
-                    break;
-                case "interact_result":
-                    //UIManager.Instance.ShowTreasurePrompt(data["result"].ToString());
-                    break;
-                case "battle_start":
-                    string battleMapId = data["battle_map_id"].ToString();
-                    string battleRoomId = data["battle_room_id"].ToString();
-                    SwitchMap(battleMapId, battleRoomId);
-                    break;
-                case "pvp_match":
-                    string pvpMapId = data["pvp_map_id"].ToString();
-                    string pvpRoomId = data["pvp_room_id"].ToString();
-                    SwitchMap(pvpMapId, pvpRoomId);
-                    break;
-                case "siege_start":
-                    string siegeMapId = data["siege_map_id"].ToString();
-                    string siegeRoomId = data["siege_room_id"].ToString();
-                    SwitchMap(siegeMapId, siegeRoomId);
-                    break;
-                case "battle_countdown":
-                    int countdown = int.Parse(data["countdown"].ToString());
-                    //UIManager.Instance.ShowCountdown(countdown);
-                    break;
-            }
-        }
+        
 
         public string GetTreasureInfo(Vector3Int cell)
         {
@@ -296,16 +272,16 @@ namespace Game.Managers
             var heroes = FindObjectsOfType<PlayerHero>();
             foreach (var hero in heroes)
             {
-                //WebSocketManager.Instance.Send(new Dictionary<string, object>
-                //{
-                //    { "type", "interact" },
-                //    { "map_id", mapId },
-                //    { "cell", new { x = cell.x, y = cell.y, z = cell.z } },
-                //    { "interact_type", type },
-                //    { "item_id", itemId },
-                //    { "player_id", hero.GetPlayerId() },
-                //    { "team_id", hero.GetTeamId() }
-                //});
+                // WebSocketManager.Instance.Send(new Dictionary<string, object>
+                // {
+                //     { "type", "interact" },
+                //     { "map_id", mapId },
+                //     { "cell", new { x = cell.x, y = cell.y, z = cell.z } },
+                //     { "interact_type", type },
+                //     { "item_id", itemId },
+                //     { "player_id", hero.GetPlayerId() },
+                //     { "team_id", hero.GetTeamId() }
+                // });
             }
         }
 

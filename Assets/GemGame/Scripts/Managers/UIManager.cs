@@ -7,6 +7,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using TMPro;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -28,7 +29,7 @@ namespace Game.Managers
         [SerializeField] private Button buttonStartGame;
 
         [SerializeField] private Button buttonCreateCharacter;
-        [SerializeField] private Button buttonMyCharacter;
+        [SerializeField] private Button buttonCreateCharacterOK;
 
         //角色UI按钮
         [SerializeField] private Button buttonCharacterWarrior;
@@ -56,13 +57,16 @@ namespace Game.Managers
         [SerializeField] private GameObject UIButton;
         [SerializeField] private GameObject GameUI;
         [SerializeField] private GameObject CharacterUI;
-
+        [SerializeField] private GameObject StartGameUI;
 
         private TextMeshProUGUI errorText; // TextMeshProUGUI 组件
         private TextMeshProUGUI tipsText; // TextMeshProUGUI 组件
         private string signupUrl = "https://www.baidu.com";
         private string forgotPwdUrl = "https://www.baidu.com";
+
+        public bool isCreateCharacter = false;
         
+
 
         private void Awake()
         {
@@ -131,8 +135,8 @@ namespace Game.Managers
             buttonCharacterRogue.onClick.AddListener(Click_Rogue);
             buttonCharacterPriest.onClick.AddListener(Click_Priest);
 
+            buttonCreateCharacterOK.onClick.AddListener(Click_CreateCharacterOK);
             buttonCreateCharacter.onClick.AddListener(Click_CreateCharacter);
-            buttonMyCharacter.onClick.AddListener(Click_MyCharacter);
 
             string description = LocalizationManager.Instance.GetJobDescription(HeroRole.Warrior);
             descriptionText.richText = true;
@@ -140,14 +144,30 @@ namespace Game.Managers
             StartCoroutine(ShowDescriptionEffect());
         }
 
-        private void Click_MyCharacter()
-        {
-            Debug.Log("Click_MyCharacter！");
-        }
-
         private void Click_CreateCharacter()
         {
-            if (GameManager.Instance.GetLoginStatus() == false)
+            if(isCreateCharacter == false)
+            {
+                isCreateCharacter = true;
+                CharacterUI.SetActive(true);
+                TextMeshProUGUI buttonText = buttonCreateCharacter.GetComponentInChildren<TextMeshProUGUI>();
+                buttonText.text = "MyCharacter";
+                CharacterManager.Instance.InitRoleCharacter(HeroRole.Warrior);
+            }
+            else
+            {
+                isCreateCharacter = false;
+                CharacterUI.SetActive(false);
+                TextMeshProUGUI buttonText = buttonCreateCharacter.GetComponentInChildren<TextMeshProUGUI>();
+                buttonText.text = "CreateCharacter";
+                CharacterManager.Instance.InitPlayerCharacterList();
+            }
+            UIManager.Instance.ShowStartGameButton(false);
+        }
+
+        private void Click_CreateCharacterOK()
+        {
+            if (GameManager.Instance.GetLoginStatus() == true)
             {
                 // 获取输入框的文本
                 string name = characterName.text;
@@ -160,9 +180,9 @@ namespace Game.Managers
                 }
 
                 // 通知服务器用户登录
-                if (WebSocketManager.Instance.IsConnected())
+                if (WebSocketManager.Instance.IsConnected)
                 {
-                    NetworkMessageHandler.Instance.SendCreateCharacter(name, CharacterManager.Instance.selectRole,"362395084@qq.com");
+                    NetworkMessageHandler.Instance.SendCreateCharacter(name, CharacterManager.Instance.selectRole,GameManager.Instance.GetLoginAccount());
                     Debug.Log($"发送角色创建消息: username: {characterName}, Role: {CharacterManager.Instance.selectRole}");
                 }
                 else
@@ -259,7 +279,9 @@ namespace Game.Managers
 
         private void Click_StartGame()
         {
-
+            GameManager.Instance.setMapId(2);
+            GameManager.Instance.SetOnlineGame(true);
+            MapManager.Instance.SwitchMap(2);
         }
 
         private void Click_Login()
@@ -276,10 +298,10 @@ namespace Game.Managers
             }
 
             // 通知服务器用户登录
-            if (WebSocketManager.Instance.IsConnected())
+            if (WebSocketManager.Instance.IsConnected)
             {
                 NetworkMessageHandler.Instance.SendLoginRequest(usernameText, passwordText);
-                
+                GameManager.Instance.SetLoginAccount(usernameText);
                 Debug.Log($"发送玩家登录消息: username: {usernameText}, password: {passwordText}");
                 // 假设服务器会异步返回结果，错误提示在 WebSocket 回调中处理
             }
@@ -378,6 +400,7 @@ namespace Game.Managers
         public void Close_Login()
         {
             LoginUI.SetActive(false);
+            UIButton.SetActive(true);
             if (errorMessage != null)
             {
                 errorMessage.SetActive(false); // 关闭登录界面时隐藏错误消息
@@ -397,15 +420,21 @@ namespace Game.Managers
         public void ShowCharacterUI(bool show)
         {
             CharacterUI.SetActive(show);
+            isCreateCharacter = false;
         }
 
-        private void Update()
+        public void ShowStartGameUI(bool show)
         {
-            if (LoginUI.activeSelf && Input.GetKeyDown(KeyCode.Return))
-            {
-                Click_Login();
-            }
+            StartGameUI.SetActive(show);
         }
+
+        public void ShowStartGameButton(bool show)
+        {
+            buttonStartGame.interactable = show;
+        }
+
+
+       
 
         private void OnDestroy()
         {

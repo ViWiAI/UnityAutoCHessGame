@@ -14,14 +14,18 @@ namespace Game.Managers
     {
         public static InputManager Instance { get; private set; }
 
-        [SerializeField] private SpriteRenderer highlightSprite;
         [SerializeField] private Color highlightColor = new Color(1f, 1f, 0.5f, 0.8f);
         [SerializeField] private Color obstacleHighlightColor = new Color(1f, 0f, 0f, 0.8f);
         [SerializeField] private GameObject gridInfo; // 右键信息面板（Image + Text）
         [SerializeField] private TMP_Text TipsMouse;
         [SerializeField] private TMP_Text TipsPlayer;
 
-  
+        [SerializeField] private Button loginButton; // 登录按钮
+        [SerializeField] public TMP_InputField usernameInput; // 拖拽账号输入框到此字段
+        [SerializeField] public TMP_InputField passwordInput; // 拖拽密码输入框到此字段
+
+        private SpriteRenderer highlightSprite; // 动态创建
+
         private Text gridInfoText;
         private PlayerHero playerHero;
         private Vector3Int lastHighlightedCell;
@@ -43,22 +47,8 @@ namespace Game.Managers
 
         private void Start()
         {
-            if (highlightSprite != null)
-            {
-                highlightSprite.enabled = false;
-                highlightSprite.sortingLayerName = "Foreground";
-                highlightSprite.sortingOrder = 10;
-                if (highlightSprite.sprite == null)
-                {
-                    Debug.LogError($"highlightSprite 缺少 Sprite");
-                }
-            }
-            else
-            {
-                Debug.LogError("highlightSprite 未在 InputManager Inspector 中分配");
-            }
-
-           
+            InitializeHighlightSprite(); // 初始化 SpriteRenderer
+            GetMouseSprite();
 
             if (gridInfo != null)
             {
@@ -73,7 +63,40 @@ namespace Game.Managers
                 Debug.LogWarning("GridInfo 未在 InputManager Inspector 中分配");
             }
 
-            
+
+        }
+
+        // 初始化 SpriteRenderer
+        private void InitializeHighlightSprite()
+        {
+            GameObject highlightObj = new GameObject("HighlightSprite");
+            highlightSprite = highlightObj.AddComponent<SpriteRenderer>();
+            highlightSprite.enabled = false;
+            highlightSprite.sortingLayerName = "Foreground";
+            highlightSprite.sortingOrder = 10;
+            DontDestroyOnLoad(highlightObj); // 保持跨场景
+            Debug.Log("动态创建 HighlightSprite");
+        }
+
+        public void GetMouseSprite()
+        {
+            if (highlightSprite == null)
+            {
+                Debug.LogError("highlightSprite 未初始化，尝试重新创建");
+                InitializeHighlightSprite();
+            }
+
+            Sprite sprite = Resources.Load<Sprite>("Sprites/mouse");
+            if (sprite != null)
+            {
+                highlightSprite.sprite = sprite;
+                highlightSprite.enabled = false;
+                Debug.Log("成功加载 Sprite: Sprites/mouse");
+            }
+            else
+            {
+                Debug.LogError("无法加载 Sprite: Sprites/mouse");
+            }
         }
 
         public void setTipsPlayerText(string text)
@@ -117,7 +140,7 @@ namespace Game.Managers
         //            gridInfoText = gridInfo != null ? gridInfo.GetComponentInChildren<Text>() : null;
         //        }
         //    }
-           
+
         //    ResetState();
         //    Debug.Log("InputManager 更新引用并重置状态");
         //}
@@ -138,20 +161,43 @@ namespace Game.Managers
 
         private void Update()
         {
-            if (playerHero != null && !playerHero.IsDead())
+            UpdateTileHighlight();
+            HandleMouseClick();
+            //          HandleRightClick();
+            HandleTabKeydown();
+
+            HandleEnterKeydown();
+        }
+
+        private void HandleEnterKeydown()
+        {
+            // 检测回车键（Enter 或 KeypadEnter）
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
-                UpdateTileHighlight();
-                HandleMouseClick();
-                HandleRightClick();
+                Debug.Log("检测到回车键");
+                // 检查是否有输入框被选中
+                if (EventSystem.current.currentSelectedGameObject == usernameInput.gameObject ||
+                    EventSystem.current.currentSelectedGameObject == passwordInput.gameObject)
+                {
+                    // 触发登录按钮点击
+                    if (loginButton != null && loginButton.interactable)
+                    {
+                        loginButton.onClick.Invoke();
+                        Debug.Log("回车键触发登录按钮");
+                    }
+                    else
+                    {
+                        Debug.LogWarning("登录按钮未设置或不可交互");
+                    }
+                }
             }
-            
         }
 
         private void UpdateTileHighlight()
         {
-            if (playerHero == null || MapManager.Instance == null || MapManager.Instance.GetTilemap() == null || MapManager.Instance.GetCollisionTilemap() == null)
+            if (highlightSprite == null ||  MapManager.Instance == null || MapManager.Instance.GetTilemap() == null || MapManager.Instance.GetCollisionTilemap() == null)
             {
-                Debug.LogWarning($"玩家或 MapManager 未初始化，玩家: {playerHero?.GetPlayerId()}");
+              //  Debug.LogWarning($"玩家或 MapManager 未初始化，玩家: {playerHero?.GetPlayerId()}");
                 return;
             }
 
@@ -161,11 +207,11 @@ namespace Game.Managers
                 return;
             }
 
-            if (highlightSprite == null || highlightSprite.sprite == null)
-            {
-                Debug.LogError($"highlightSprite 未设置或缺少 Sprite");
-                return;
-            }
+            //if (highlightSprite == null || highlightSprite.sprite == null)
+            //{
+            //    Debug.LogWarning($"highlightSprite 未设置或缺少 Sprite");
+            //    return;
+            //}
 
             Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
             if (!Camera.main.orthographic)
@@ -232,23 +278,63 @@ namespace Game.Managers
             }
         }
 
+        private Vector3Int GetMouseClickPosition()
+        {
+            Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            if (!Camera.main.orthographic)
+            {
+                float zDistance = Mathf.Abs(Camera.main.transform.position.z - MapManager.Instance.GetTilemap().transform.position.z);
+                mousePos = Camera.main.ScreenToWorldPoint(new Vector3(Input.mousePosition.x, Input.mousePosition.y, zDistance));
+            }
+            return MapManager.Instance.GetTilemap().WorldToCell(new Vector3(mousePos.x, mousePos.y, 0));
+        }
+
+        private void HandleTabKeydown()
+        {
+            // 检测 Tab 键按下
+            if (Input.GetKeyDown(KeyCode.Tab))
+            {
+                Debug.LogWarning("tab key down");
+                // 检查输入框是否有效
+                if (usernameInput == null || passwordInput == null)
+                {
+                    Debug.LogWarning("用户名或密码输入框未设置");
+                    return;
+                }
+
+                // 获取当前选中的 UI 元素
+                GameObject currentSelected = EventSystem.current.currentSelectedGameObject;
+
+                // 如果没有选中任何输入框，默认选中用户名输入框
+                if (currentSelected == null)
+                {
+                    usernameInput.Select();
+                    return;
+                }
+
+                // 切换逻辑
+                if (currentSelected == usernameInput.gameObject)
+                {
+                    passwordInput.Select();
+                }
+                else // 包括密码输入框和其他情况
+                {
+                    usernameInput.Select();
+                }
+            }
+        }
+
         private void HandleMouseClick()
         {
             if (!Input.GetMouseButtonDown(0))
             {
                 return;
             }
-            if (!WebSocketManager.Instance.IsConnected())
+            if (!WebSocketManager.Instance.IsConnected)
             {
                 Debug.LogWarning("WebSocket 未连接");
                 return;
             }
-            if (playerHero == null || MapManager.Instance == null || MapManager.Instance.GetTilemap() == null || playerHero.IsDead())
-            {
-                Debug.LogWarning($"点击无效: playerHero={playerHero}, MapManager={MapManager.Instance}, Tilemap={MapManager.Instance?.GetTilemap()?.name}, isDead={playerHero?.IsDead()}");
-                return;
-            }
-
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
             {
 
@@ -256,34 +342,61 @@ namespace Game.Managers
                 return;
             }
 
-            Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-            if (!Camera.main.orthographic)
+            //玩家已经上线，处理玩家移动
+            if (GameManager.Instance.GetOnline())
             {
-                float zDistance = Mathf.Abs(Camera.main.transform.position.z - MapManager.Instance.GetTilemap().transform.position.z);
-                mousePos = Camera.main.ScreenToWorldPoint(new Vector3(Input.mousePosition.x, Input.mousePosition.y, zDistance));
-            }
-            Vector3Int cellPos = MapManager.Instance.GetTilemap().WorldToCell(new Vector3(mousePos.x, mousePos.y, 0));
+                Vector3Int cellPos = GetMouseClickPosition();
 
-            if (MapManager.Instance.GetTilemap().HasTile(cellPos) && !GridUtility.HasObstacle(cellPos, MapManager.Instance.GetTilemap(), MapManager.Instance.GetCollisionTilemap()))
-            {
-                if (playerHero.GetlastClickedCell() == cellPos)
+                if (MapManager.Instance.GetTilemap().HasTile(cellPos) && !GridUtility.HasObstacle(cellPos, MapManager.Instance.GetTilemap(), MapManager.Instance.GetCollisionTilemap()))
                 {
-                    Debug.Log($"鼠标点击同一个坐标位置 {cellPos}，忽略点击");
-                    return;
-                }
+                    if (PlayerManager.Instance.GetLocalPlayer().GetlastClickedCell() == cellPos)
+                    {
+                        Debug.Log($"鼠标点击同一个坐标位置 {cellPos}，忽略点击");
+                        return;
+                    }
 
-                if (playerHero.IsMoving())
-                {
-                    playerHero.StopMoving();
-                    Debug.Log("当前路径被新点击中断");
+                    if (PlayerManager.Instance.GetLocalPlayer().IsMoving())
+                    {
+                        PlayerManager.Instance.GetLocalPlayer().ChangeMove();
+                        Debug.Log("当前路径被新点击中断");
+                    }
+                    PlayerManager.Instance.GetLocalPlayer().MoveTo(cellPos);
+                    Debug.Log($"玩家 {PlayerManager.Instance.GetLocalPlayer().GetPlayerId()} 请求移动到 {cellPos}");
                 }
-                playerHero.MoveTo(cellPos);
-                Debug.Log($"玩家 {playerHero.GetPlayerId()} 请求移动到 {cellPos}");
+                else
+                {
+                    Debug.Log($"点击位置 {cellPos} 无瓦片或有障碍物");
+                }
             }
-            else
+            //玩家未上线处理逻辑
+            else if(GameManager.Instance.GetLoginStatus() && UIManager.Instance.isCreateCharacter == false)
             {
-                Debug.Log($"点击位置 {cellPos} 无瓦片或有障碍物");
+                Vector3Int cellPos = GetMouseClickPosition();
+                Debug.Log($"当前点击位置：{cellPos}");
+                if (cellPos == new Vector3Int(-4, 2, 0))
+                {
+                    CharacterManager.Instance.SetSelectCharacter(0);
+                }
+                else if (cellPos == new Vector3Int(-2, 2, 0))
+                {
+                    CharacterManager.Instance.SetSelectCharacter(1);
+                }
+                else if (cellPos == new Vector3Int(0, 2, 0))
+                {
+                    CharacterManager.Instance.SetSelectCharacter(2);
+                }
+                else if (cellPos == new Vector3Int(2, 2, 0))
+                {
+                    CharacterManager.Instance.SetSelectCharacter(3);
+                }
+                else if (cellPos == new Vector3Int(4, 2, 0))
+                {
+                    CharacterManager.Instance.SetSelectCharacter(4);
+                }
+               
             }
+
+            
         }
 
         private void HandleRightClick()
